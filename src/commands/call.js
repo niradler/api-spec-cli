@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { getSpec, getConfig } from "../store.js";
 import { out } from "../output.js";
 import { parseArgs, parseKV } from "../args.js";
@@ -5,7 +6,12 @@ import { parseArgs, parseKV } from "../args.js";
 export async function callOperation(args) {
   const { flags, positional } = parseArgs(args);
   const target = positional[0];
-  if (!target) throw new Error("Usage: spec call <operationId-or-path> [--data '{}'] [--query k=v] [--header k=v] [--var k=v] [--method GET]");
+  if (!target) throw new Error("Usage: spec call <operationId-or-path> [--data '{}'] [--data-file path.json] [--query k=v] [--header k=v] [--var k=v] [--method GET]");
+
+  // Support --data-file to avoid shell escaping issues
+  if (flags["data-file"] && !flags.data) {
+    flags.data = readFileSync(flags["data-file"], "utf-8").trim();
+  }
 
   const spec = getSpec();
   if (!spec) throw new Error("No spec loaded. Run: spec load <file-or-url>");
@@ -103,11 +109,13 @@ async function callGraphQL(spec, config, target, flags) {
 
   // Build query from operation
   let query;
+  let dataVariables;
   if (flags.data) {
     // If --data is provided, treat as raw GraphQL query
     try {
       const parsed = JSON.parse(flags.data);
       query = parsed.query || flags.data;
+      dataVariables = parsed.variables;
     } catch {
       query = flags.data;
     }
@@ -116,8 +124,9 @@ async function callGraphQL(spec, config, target, flags) {
     query = buildGraphQLQuery(op, spec.types);
   }
 
-  // Variables from --var flags
-  const variables = parseKV(flags.var);
+  // Variables: --data variables merged with --var overrides
+  const varOverrides = parseKV(flags.var);
+  const variables = { ...dataVariables, ...varOverrides };
 
   const headers = {
     "Content-Type": "application/json",

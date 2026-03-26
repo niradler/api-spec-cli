@@ -4,33 +4,53 @@ import { showOperation } from "./commands/show.js";
 import { callOperation } from "./commands/call.js";
 import { configCmd } from "./commands/config.js";
 import { validateSpec } from "./commands/validate.js";
+import { typesCmd } from "./commands/types.js";
 import { out, err, setFormat } from "./output.js";
 
-const HELP = `spec-cli — Agent-friendly API spec explorer
+const HELP = `spec-cli — Explore and call APIs from the command line.
+All output is JSON. Designed for AI agents but works for humans too.
 
-Commands:
-  spec load <file-or-url>              Load an OpenAPI (JSON/YAML) or GraphQL endpoint
-  spec list [--filter <text>]          List all operations
-  spec show <operation>                Show operation details (params, body, response)
-  spec call <operation> [options]      Execute a request
-  spec validate <file-or-url>          Validate an OpenAPI spec (errors + warnings)
-  spec config set <key> <value>        Set config (baseUrl, headers.X-Key, auth)
-  spec config get [key]                Show config
-  spec config unset <key>              Remove config key
+WORKFLOW (follow this order):
+  1. spec load <file-or-url>           Load an OpenAPI or GraphQL spec
+  2. spec list                         Browse operations (compact IDs)
+  3. spec show <operation>             Get params, body, response for one op
+  4. spec call <operation> [options]   Execute the request
 
-Call options:
-  --data '{"key":"val"}'               Request body (JSON)
-  --query key=val                      Query parameters (repeatable)
-  --header key=val                     Per-request headers (repeatable)
-  --var key=val                        Path variables (repeatable)
-  --method GET|POST|...                Override HTTP method
+  Use spec types [name] to inspect a schema/type referenced by show.
+  Use spec config to set baseUrl, auth, and headers before calling.
 
-Output format (all commands):
-  --format json                        JSON (default, best for agents)
-  --format text                        Human-readable text
-  --format yaml                        YAML output
+DISCOVERY (narrowing down):
+  spec list                            All operations (just IDs)
+  spec list --filter user              Search across all fields
+  spec list --tag pets                 OpenAPI tag or GraphQL kind (query/mutation)
+  spec list --limit 10 --offset 20     Paginate large APIs
 
-All output defaults to JSON for agent consumption.`;
+INSPECT:
+  spec show getPetById                 Match by operationId
+  spec show /pet/{petId}               Match by path
+  spec show "GET /pet/{petId}"         Match by method + path
+  spec show publishPost                GraphQL operation name
+  spec types                           List all schema/type names
+  spec types Pet                       Inspect one schema (compact, no $ref explosion)
+
+EXECUTE:
+  spec call <op> --var petId=1                       Path or GraphQL variables
+  spec call <op> --query status=available             Query string params
+  spec call <op> --data '{"name":"Rex"}'              JSON body
+  spec call <op> --data-file /tmp/query.json          JSON body from file (avoids shell escaping)
+  spec call <op> --header X-Custom=val                Extra headers
+  spec call <op> --method PUT                         Override HTTP method
+
+CONFIG (persisted in .spec-cli/config.json):
+  spec config set baseUrl https://api.example.com
+  spec config set auth <token>                        Auto-adds Bearer prefix
+  spec config set headers.X-API-Key <key>             Dot notation for nested keys
+  spec config get                                     Show current config
+  spec config unset auth                              Remove a key
+
+OTHER:
+  spec validate <file-or-url>          Check OpenAPI spec for errors
+  --format json|text|yaml              Output format (default: json)`;
 
 export async function run(args) {
   // Extract --format before routing
@@ -64,6 +84,10 @@ export async function run(args) {
         break;
       case "validate":
         await validateSpec(args.slice(1));
+        break;
+      case "types":
+      case "type":
+        await typesCmd(args.slice(1));
         break;
       case "config":
       case "cfg":

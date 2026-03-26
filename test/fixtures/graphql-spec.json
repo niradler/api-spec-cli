@@ -1,0 +1,99 @@
+{
+  "type": "graphql",
+  "title": null,
+  "endpoint": "https://gql.test.com",
+  "operations": [
+    {
+      "kind": "query",
+      "name": "me",
+      "description": "Get current user",
+      "args": [],
+      "returnType": "User!",
+      "isDeprecated": false,
+      "deprecationReason": null
+    },
+    {
+      "kind": "query",
+      "name": "posts",
+      "description": "List posts",
+      "args": [
+        {
+          "name": "first",
+          "description": "Limit",
+          "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "Int", "ofType": null } },
+          "defaultValue": null
+        },
+        {
+          "name": "filter",
+          "description": "Filter input",
+          "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "INPUT_OBJECT", "name": "PostFilter", "ofType": null } },
+          "defaultValue": null
+        }
+      ],
+      "returnType": "PostConnection!",
+      "isDeprecated": false,
+      "deprecationReason": null
+    },
+    {
+      "kind": "mutation",
+      "name": "createPost",
+      "description": "Create a post",
+      "args": [
+        {
+          "name": "input",
+          "description": "Post data",
+          "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "INPUT_OBJECT", "name": "CreatePostInput", "ofType": null } },
+          "defaultValue": null
+        }
+      ],
+      "returnType": "Post!",
+      "isDeprecated": false,
+      "deprecationReason": null
+    },
+    {
+      "kind": "subscription",
+      "name": "postCreated",
+      "description": "New post event",
+      "args": [],
+      "returnType": "Post!",
+      "isDeprecated": false,
+      "deprecationReason": null
+    }
+  ],
+  "types": [
+    { "name": "User", "kind": "OBJECT", "description": "A user", "fields": [
+      { "name": "id", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "ID", "ofType": null } }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "name", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "email", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] }
+    ], "inputFields": null, "enumValues": null },
+    { "name": "Post", "kind": "OBJECT", "description": "A blog post", "fields": [
+      { "name": "id", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "ID", "ofType": null } }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "title", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "content", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "author", "type": { "kind": "OBJECT", "name": "User", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] }
+    ], "inputFields": null, "enumValues": null },
+    { "name": "PostConnection", "kind": "OBJECT", "description": null, "fields": [
+      { "name": "edges", "type": { "kind": "LIST", "name": null, "ofType": { "kind": "OBJECT", "name": "PostEdge", "ofType": null } }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "totalCount", "type": { "kind": "SCALAR", "name": "Int", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] }
+    ], "inputFields": null, "enumValues": null },
+    { "name": "PostEdge", "kind": "OBJECT", "description": null, "fields": [
+      { "name": "node", "type": { "kind": "OBJECT", "name": "Post", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] },
+      { "name": "cursor", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": null, "isDeprecated": false, "deprecationReason": null, "args": [] }
+    ], "inputFields": null, "enumValues": null },
+    { "name": "PostFilter", "kind": "INPUT_OBJECT", "description": "Filter for posts", "fields": null, "inputFields": [
+      { "name": "authorId", "type": { "kind": "SCALAR", "name": "ID", "ofType": null }, "description": "Filter by author", "defaultValue": null },
+      { "name": "tag", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": "Filter by tag", "defaultValue": null }
+    ], "enumValues": null },
+    { "name": "CreatePostInput", "kind": "INPUT_OBJECT", "description": "Input for creating a post", "fields": null, "inputFields": [
+      { "name": "title", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "String", "ofType": null } }, "description": "Post title", "defaultValue": null },
+      { "name": "content", "type": { "kind": "SCALAR", "name": "String", "ofType": null }, "description": "Post body", "defaultValue": null },
+      { "name": "tags", "type": { "kind": "LIST", "name": null, "ofType": { "kind": "SCALAR", "name": "String", "ofType": null } }, "description": "Tags", "defaultValue": null }
+    ], "enumValues": null },
+    { "name": "PostStatus", "kind": "ENUM", "description": "Status of a post", "fields": null, "inputFields": null, "enumValues": [
+      { "name": "DRAFT", "description": null, "isDeprecated": false, "deprecationReason": null },
+      { "name": "PUBLISHED", "description": null, "isDeprecated": false, "deprecationReason": null },
+      { "name": "ARCHIVED", "description": null, "isDeprecated": false, "deprecationReason": null }
+    ] }
+  ],
+  "raw": {}
+}

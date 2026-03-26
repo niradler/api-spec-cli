@@ -1,8 +1,10 @@
 import { getSpec } from "../store.js";
 import { out } from "../output.js";
+import { parseArgs } from "../args.js";
 
 export async function showOperation(args) {
-  const target = args[0];
+  const { positional } = parseArgs(args);
+  const target = positional[0];
   if (!target) throw new Error("Usage: spec show <operationId-or-path>");
 
   const spec = getSpec();
@@ -18,7 +20,6 @@ export async function showOperation(args) {
 function showOpenAPI(spec, target) {
   const lower = target.toLowerCase();
 
-  // Match by operationId, path, or "METHOD path"
   const op = spec.operations.find((o) => {
     return (
       o.id.toLowerCase() === lower ||
@@ -33,15 +34,29 @@ function showOpenAPI(spec, target) {
 
   const root = spec.raw || spec.components;
 
-  // Resolve $ref in parameters, requestBody, and responses
-  const resolved = {
-    ...op,
-    parameters: op.parameters.map((p) => resolveRef(p, root)),
+  out({
+    id: op.id,
+    method: op.method,
+    path: op.path,
+    summary: op.summary,
+    description: op.description,
+    tags: op.tags,
+    deprecated: op.deprecated,
+    parameters: op.parameters.map((p) => {
+      const resolved = resolveRef(p, root);
+      return {
+        name: resolved.name,
+        in: resolved.in,
+        required: resolved.required || false,
+        type: resolved.schema?.type || null,
+        format: resolved.schema?.format || undefined,
+        description: resolved.description || undefined,
+        enum: resolved.schema?.enum || undefined,
+      };
+    }),
     requestBody: op.requestBody ? resolveRequestBody(op.requestBody, root) : null,
-    responses: resolveResponses(op.responses, root),
-  };
-
-  out(resolved);
+    responses: resolveResponsesCompact(op.responses, root),
+  });
 }
 
 function showGraphQL(spec, target) {
@@ -53,14 +68,26 @@ function showGraphQL(spec, target) {
     throw new Error(`Operation not found: ${target}. Run 'spec list' to see available operations.`);
   }
 
-  // Also find related types
   const relatedTypes = findRelatedTypes(op, spec.types);
 
   out({
-    ...op,
+    name: op.name,
+    kind: op.kind,
+    description: op.description,
+    returnType: op.returnType,
+    isDeprecated: op.isDeprecated,
+    args: op.args?.map((a) => ({
+      name: a.name,
+      type: flattenType(a.type),
+      required: a.type?.kind === "NON_NULL",
+      description: a.description || undefined,
+      defaultValue: a.defaultValue || undefined,
+    })),
     relatedTypes,
   });
 }
+
+// --- Helpers ---
 
 function resolveRef(obj, root) {
   if (!obj || typeof obj !== "object") return obj;
@@ -79,55 +106,81 @@ function resolveRequestBody(body, root) {
   if (!body) return null;
   const resolved = resolveRef(body, root);
   if (resolved?.content) {
-    const result = { ...resolved, content: {} };
-    for (const [mediaType, value] of Object.entries(resolved.content)) {
-      result.content[mediaType] = {
-        ...value,
-        schema: resolveSchema(value.schema, root),
+    // Only show application/json if available (most useful for agents)
+    const jsonContent = resolved.content["application/json"];
+    if (jsonContent) {
+      return {
+        description: resolved.description || undefined,
+        required: resolved.required || undefined,
+        schema: resolveSchema(jsonContent.schema, root),
       };
     }
-    return result;
+    // Fallback: show first content type
+    const [mediaType, value] = Object.entries(resolved.content)[0];
+    return {
+      description: resolved.description || undefined,
+      required: resolved.required || undefined,
+      mediaType,
+      schema: resolveSchema(value.schema, root),
+    };
   }
   return resolved;
 }
 
-function resolveResponses(responses, root) {
-  if (!responses) return responses;
+// Only show success response schema — agent doesn't need error schemas to make a call
+function resolveResponsesCompact(responses, root) {
+  if (!responses) return null;
   const result = {};
   for (const [code, resp] of Object.entries(responses)) {
     const resolved = resolveRef(resp, root);
     if (resolved?.content) {
-      result[code] = {
-        ...resolved,
-        content: {},
-      };
-      for (const [mediaType, value] of Object.entries(resolved.content)) {
-        result[code].content[mediaType] = {
-          ...value,
-          schema: resolveSchema(value.schema, root),
+      const jsonContent = resolved.content["application/json"];
+      if (jsonContent) {
+        result[code] = {
+          description: resolved.description,
+          schema: resolveSchema(jsonContent.schema, root),
         };
+      } else {
+        result[code] = { description: resolved.description };
       }
     } else {
-      result[code] = resolved;
+      result[code] = { description: resolved.description };
     }
   }
   return result;
 }
 
 function resolveSchema(schema, root, depth = 0) {
-  if (!schema || depth > 5) return schema;
+  if (!schema || depth > 3) return schema;
   if (schema.$ref) {
-    return resolveRef(schema, root);
+    const resolved = resolveRef(schema, root);
+    // Resolve one more level for the top-level ref
+    return resolveSchema(resolved, root, depth + 1);
   }
   if (schema.properties) {
-    const result = { ...schema, properties: {} };
+    const result = { type: schema.type, required: schema.required };
+    result.properties = {};
     for (const [key, val] of Object.entries(schema.properties)) {
-      result.properties[key] = resolveSchema(val, root, depth + 1);
+      if (val.$ref) {
+        const refName = val.$ref.split("/").pop();
+        result.properties[key] = { $ref: refName };
+      } else if (val.type === "array" && val.items?.$ref) {
+        result.properties[key] = { type: "array", items: val.items.$ref.split("/").pop() };
+      } else {
+        const prop = { type: val.type };
+        if (val.format) prop.format = val.format;
+        if (val.enum) prop.enum = val.enum;
+        if (val.description) prop.description = val.description;
+        result.properties[key] = prop;
+      }
     }
     return result;
   }
   if (schema.items) {
-    return { ...schema, items: resolveSchema(schema.items, root, depth + 1) };
+    if (schema.items.$ref) {
+      return { type: "array", items: schema.items.$ref.split("/").pop() };
+    }
+    return { type: "array", items: resolveSchema(schema.items, root, depth + 1) };
   }
   return schema;
 }
@@ -135,7 +188,6 @@ function resolveSchema(schema, root, depth = 0) {
 function findRelatedTypes(op, types) {
   const names = new Set();
 
-  // Collect type names from args and return type
   function extractTypeNames(typeStr) {
     if (!typeStr) return;
     const cleaned = typeStr.replace(/[[\]!]/g, "");
@@ -147,20 +199,28 @@ function findRelatedTypes(op, types) {
     extractTypeNames(flattenType(arg.type));
   }
 
-  // Filter out built-in scalar types
   const scalars = new Set(["String", "Int", "Float", "Boolean", "ID"]);
   return types
     .filter((t) => names.has(t.name) && !scalars.has(t.name))
-    .map((t) => ({
-      name: t.name,
-      kind: t.kind,
-      fields: t.fields?.map((f) => ({
-        name: f.name,
-        type: flattenType(f.type),
-        description: f.description,
-      })),
-      enumValues: t.enumValues,
-    }));
+    .map((t) => {
+      const result = { name: t.name, kind: t.kind };
+      if (t.fields) {
+        result.fields = t.fields.map((f) => ({
+          name: f.name,
+          type: flattenType(f.type),
+        }));
+      }
+      if (t.inputFields) {
+        result.inputFields = t.inputFields.map((f) => ({
+          name: f.name,
+          type: flattenType(f.type),
+        }));
+      }
+      if (t.enumValues) {
+        result.enumValues = t.enumValues.map((e) => e.name);
+      }
+      return result;
+    });
 }
 
 function flattenType(t) {

@@ -1,6 +1,6 @@
-# spec-cli
+# api-spec-cli
 
-Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs. Designed for AI coding agents — all output is structured JSON by default, with optional text and YAML formats.
+CLI for AI agents to explore and call OpenAPI and GraphQL APIs. Output is JSON by default — compact, parseable, token-efficient.
 
 ## Install
 
@@ -8,190 +8,146 @@ Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs. Designed 
 npm install -g api-spec-cli
 ```
 
-Or with bun:
+Works with Node.js 18+ or Bun. No other dependencies.
 
 ```bash
-bun install -g api-spec-cli
-```
-
-Or run without installing:
-
-```bash
+# Or run without installing
 npx api-spec-cli <command>
-bunx api-spec-cli <command>
 ```
 
-## Quick Start
+## How It Works
+
+The CLI follows a progressive discovery pattern. You never dump an entire API spec at once — instead you narrow down to what you need.
+
+### Step 1: Load the spec
 
 ```bash
-# Load an OpenAPI spec
-spec load https://petstore3.swagger.io/api/v3/openapi.json
+spec load https://petstore3.swagger.io/api/v3/openapi.json   # OpenAPI
+spec load ./openapi.yaml                                       # Local file
+spec load https://gql.hashnode.com                             # GraphQL (introspection)
+```
 
-# Load a GraphQL endpoint (introspection)
-spec load https://gql.hashnode.com
+Output tells you what was loaded:
+```json
+{ "ok": true, "type": "graphql", "operationCount": 114, "source": "https://gql.hashnode.com" }
+```
 
-# List operations
-spec list
-spec list --filter pets
+### Step 2: Find what you need
 
-# Show operation details
-spec show getPetById
-spec show publishPost
+`list` is compact by default — just operation IDs, no schemas. Use `--filter`, `--tag`, `--limit` to narrow down.
 
-# Call an endpoint
+```bash
+spec list                          # All operations (compact IDs only)
+spec list --filter publish         # Search by keyword
+spec list --tag pets               # OpenAPI: filter by tag
+spec list --tag mutation           # GraphQL: filter by kind (query/mutation/subscription)
+spec list --limit 10               # First 10 only
+spec list --limit 10 --offset 10   # Next 10
+```
+
+Compact output (token-efficient):
+```json
+{
+  "type": "graphql",
+  "total": 5,
+  "showing": 5,
+  "operations": [
+    { "id": "publishPost", "kind": "mutation" },
+    { "id": "publishDraft", "kind": "mutation" }
+  ]
+}
+```
+
+Use `--compact false` for full details (summary, tags, args).
+
+### Step 3: Inspect one operation
+
+`show` gives you everything you need to call an operation — params, body schema, response, and related types — in one call.
+
+```bash
+spec show publishPost              # GraphQL: by operation name
+spec show getPetById               # OpenAPI: by operationId
+spec show /pet/{petId}             # OpenAPI: by path
+spec show "GET /pet/{petId}"       # OpenAPI: by method + path
+```
+
+Schemas are compact. Nested `$ref` references show as type names (not exploded), so the output stays small. If you need details on a referenced type, use `spec types <name>`.
+
+### Step 4: Drill into types (if needed)
+
+```bash
+spec types                         # List all schema/type names
+spec types Pet                     # Inspect one schema
+spec types PublishPostInput        # Inspect a GraphQL input type
+```
+
+This is optional — `show` already includes related types inline. Use `types` only when you need a type that wasn't included in the `show` output.
+
+### Step 5: Call the API
+
+```bash
+# Set base URL and auth first (persisted across calls)
 spec config set baseUrl https://petstore3.swagger.io/api/v3
-spec call findPetsByStatus --query status=available
-
-# GraphQL with auth
 spec config set auth YOUR_TOKEN
-spec call me
-```
 
-## Commands
-
-### `spec load <file-or-url>`
-
-Load an API spec from a local file (JSON/YAML) or URL.
-
-- **OpenAPI/Swagger**: Detects JSON or YAML, supports v2 and v3
-- **GraphQL**: Runs introspection query on the endpoint
-
-```bash
-spec load ./openapi.yaml
-spec load https://api.example.com/openapi.json
-spec load https://gql.example.com/graphql
-```
-
-### `spec list [--filter <text>]`
-
-List all operations in the loaded spec.
-
-```bash
-spec list                    # all operations
-spec list --filter user      # filter by keyword
-```
-
-**OpenAPI output**: `id`, `method`, `path`, `summary`, `tags`, `deprecated`
-**GraphQL output**: `id`, `kind` (query/mutation/subscription), `description`, `args`, `returnType`
-
-### `spec show <operation>`
-
-Show full details of an operation.
-
-```bash
-spec show getPetById          # by operationId
-spec show /pet/{petId}        # by path
-spec show "GET /pet/{petId}"  # by method + path
-spec show publishPost         # GraphQL operation name
-```
-
-For OpenAPI: resolves `$ref` references in parameters, request body, and responses.
-For GraphQL: includes related types with field definitions.
-
-### `spec call <operation> [options]`
-
-Execute an API request.
-
-```bash
-# OpenAPI
-spec call addPet --data '{"name":"Rex","photoUrls":[]}'
+# OpenAPI calls
 spec call getPetById --var petId=1
 spec call findPetsByStatus --query status=available
-spec call updatePet --method PUT --data '{"id":1,"name":"Rex"}'
+spec call addPet --data '{"name":"Rex","photoUrls":[]}'
 
-# GraphQL
+# GraphQL calls (auto-generates query from schema)
 spec call me
-spec call publication --var host=blog.example.com
-spec call publishPost --data '{"query":"mutation { ... }"}'
+spec call publication --var host=blog.hashnode.dev
 ```
 
-**Options:**
-| Flag | Description |
-|------|-------------|
-| `--data '{"key":"val"}'` | Request body (JSON) |
-| `--query key=val` | Query parameter (repeatable) |
-| `--header key=val` | Per-request header (repeatable) |
-| `--var key=val` | Path variable or GraphQL variable (repeatable) |
-| `--method GET\|POST\|...` | Override HTTP method |
+## Config
 
-For GraphQL calls without `--data`, the CLI auto-generates a query from the operation's schema, selecting scalar fields from the return type.
-
-### `spec validate <file-or-url>`
-
-Validate an OpenAPI spec and report errors and warnings.
+Persistent config stored in `.spec-cli/config.json`. Set once, used for all calls.
 
 ```bash
-spec validate ./openapi.yaml
+spec config set baseUrl https://api.example.com
+spec config set auth my-token                        # Auto-adds "Bearer " prefix
+spec config set auth "Basic dXNlcjpwYXNz"            # Or explicit auth header
+spec config set headers.X-API-Key abc123              # Custom headers (dot notation)
+spec config get                                       # Show all config
+spec config unset auth                                # Remove a key
+```
+
+## Validate
+
+Check an OpenAPI spec for errors before using it:
+
+```bash
 spec validate https://api.example.com/openapi.json
 ```
 
-Checks:
-- Required fields (`info`, `info.title`, `info.version`, `paths`)
-- Valid HTTP methods and schema types
-- Unique `operationId` values
-- Broken `$ref` references
-- Array schemas have `items`
-- Path parameters are declared
-- Server/host definitions
-- Unusual patterns (request body on GET)
+Reports broken `$ref` references, missing required fields, duplicate operationIds, invalid schema types, and more.
 
-### `spec config`
+## Output Format
 
-Manage persistent configuration stored in `.spec-cli/config.json`.
+JSON by default. Use `--format text` or `--format yaml` for alternatives:
 
 ```bash
-spec config get                              # show all config
-spec config get baseUrl                      # show single key
-spec config set baseUrl https://api.example.com
-spec config set auth my-api-token            # adds Bearer prefix
-spec config set auth "Bearer my-token"       # explicit Bearer
-spec config set auth "Basic dXNlcjpwYXNz"   # Basic auth
-spec config set headers.X-API-Key abc123     # custom header (dot notation)
-spec config unset headers.X-API-Key          # remove a key
+spec list --format text
+spec show getPetById --format yaml
 ```
 
-## Output Formats
+Errors always go to stderr as JSON: `{"error": "message"}` with non-zero exit code.
 
-All commands support `--format`:
+## Token Efficiency
 
-```bash
-spec list --format json     # JSON (default)
-spec list --format text     # human-readable
-spec list --format yaml     # YAML
-```
+The CLI is designed to minimize context window usage for AI agents:
 
-Errors always output as JSON to stderr for reliable agent parsing.
-
-## GraphQL Coverage
-
-Full GraphQL schema support via introspection:
-- **Queries** — all root query fields
-- **Mutations** — all root mutation fields
-- **Subscriptions** — all root subscription fields
-- **Types** — input objects, enums, scalars, object types with fields
-- **Args** — full argument definitions with types and defaults
-
-## For AI Agents
-
-This CLI is designed to be used by AI coding agents (Claude, GPT, etc.) as an MCP tool or shell command:
-
-1. **Structured output** — JSON by default, every field is predictable
-2. **Error format** — `{"error": "message"}` on stderr, non-zero exit code
-3. **Discoverable** — `list` and `show` let agents explore APIs without docs
-4. **Auto-query building** — GraphQL calls auto-generate queries from the schema
-5. **Persistent config** — set auth once, use across calls
-6. **No interactive prompts** — everything is flags and args
+- `list` returns only IDs by default (not full schemas)
+- `show` resolves schemas compactly — nested refs show as names, not deep explosions
+- `types` lets you inspect one type at a time instead of loading all schemas
+- `--limit` and `--offset` paginate large APIs
+- `--filter` and `--tag` narrow results before output
 
 ## Storage
 
-All state is stored in `.spec-cli/` in the current directory:
-- `spec.json` — cached loaded spec
-- `config.json` — base URL, headers, auth
+All state lives in `.spec-cli/` in the working directory:
+- `spec.json` — loaded spec cache
+- `config.json` — base URL, auth, headers
 
 Add `.spec-cli/` to your `.gitignore`.
-
-## Dependencies
-
-- [yaml](https://www.npmjs.com/package/yaml) — YAML parsing (for OpenAPI YAML specs and YAML output)
-
-No other runtime dependencies. Works with Node.js 18+ or Bun (uses native `fetch`).
