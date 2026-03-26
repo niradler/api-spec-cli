@@ -5,14 +5,20 @@ Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs. Designed 
 ## Install
 
 ```bash
-bun install
-bun link
+npm install -g api-spec-cli
 ```
 
-Or run directly:
+Or with bun:
 
 ```bash
-bun bin/spec.js <command>
+bun install -g api-spec-cli
+```
+
+Or run without installing:
+
+```bash
+npx api-spec-cli <command>
+bunx api-spec-cli <command>
 ```
 
 ## Quick Start
