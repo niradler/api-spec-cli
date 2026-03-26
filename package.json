@@ -1,0 +1,37 @@
+{
+  "name": "api-spec-cli",
+  "version": "0.0.2",
+  "description": "Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs",
+  "type": "module",
+  "bin": {
+    "spec": "./bin/spec.js"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "keywords": [
+    "openapi",
+    "graphql",
+    "cli",
+    "agent",
+    "api",
+    "swagger",
+    "ai-agent",
+    "mcp",
+    "introspection"
+  ],
+  "author": "niradler55",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niradler/api-spec-cli.git"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0"
+  }
+}

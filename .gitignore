@@ -1,0 +1,4 @@
+node_modules/
+.spec-cli/
+.env
+bun.lockb
