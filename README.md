@@ -194,4 +194,4 @@ Add `.spec-cli/` to your `.gitignore`.
 
 - [yaml](https://www.npmjs.com/package/yaml) — YAML parsing (for OpenAPI YAML specs and YAML output)
 
-No other runtime dependencies. Uses Bun's built-in `fetch` for HTTP.
+No other runtime dependencies. Works with Node.js 18+ or Bun (uses native `fetch`).

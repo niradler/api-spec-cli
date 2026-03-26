@@ -1,6 +1,6 @@
 {
   "name": "api-spec-cli",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs",
   "type": "module",
   "bin": {
@@ -30,6 +30,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/niradler/api-spec-cli.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "yaml": "^2.7.0"
