@@ -1,6 +1,6 @@
 {
   "name": "api-spec-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs",
   "type": "module",
   "bin": {
