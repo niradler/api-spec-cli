@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { getSpec, getConfig } from "../store.js";
 import { out } from "../output.js";
 import { parseArgs, parseKV } from "../args.js";
+import { createMcpClient } from "../mcp-client.js";
 
 export async function callOperation(args) {
   const { flags, positional } = parseArgs(args);
@@ -20,8 +21,36 @@ export async function callOperation(args) {
 
   if (spec.type === "openapi") {
     await callOpenAPI(spec, config, target, flags);
+  } else if (spec.type === "mcp") {
+    await callMCP(spec, target, flags);
   } else {
     await callGraphQL(spec, config, target, flags);
+  }
+}
+
+async function callMCP(spec, target, flags) {
+  const tool = spec.tools.find((t) => t.name.toLowerCase() === target.toLowerCase());
+  if (!tool) throw new Error(`Tool not found: ${target}. Run 'spec list' to see available tools.`);
+
+  // Build arguments: --data for full JSON object, --var for individual keys
+  let toolArgs = {};
+  if (flags.data) {
+    try {
+      toolArgs = JSON.parse(flags.data);
+    } catch {
+      throw new Error("--data must be valid JSON when calling an MCP tool");
+    }
+  }
+  // --var key=value overrides / extends --data args
+  const varOverrides = parseKV(flags.var);
+  toolArgs = { ...toolArgs, ...varOverrides };
+
+  const client = await createMcpClient(spec);
+  try {
+    const result = await client.callTool({ name: tool.name, arguments: toolArgs });
+    out({ tool: tool.name, arguments: toolArgs, result });
+  } finally {
+    await client.close();
   }
 }
 

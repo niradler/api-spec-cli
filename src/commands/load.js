@@ -3,6 +3,8 @@ import { resolve } from "path";
 import YAML from "yaml";
 import { saveSpec } from "../store.js";
 import { out, err } from "../output.js";
+import { parseArgs } from "../args.js";
+import { createMcpClient } from "../mcp-client.js";
 
 const INTROSPECTION_QUERY = `{
   __schema {
@@ -60,8 +62,24 @@ fragment TypeRef on __Type {
 }`;
 
 export async function loadSpec(args) {
-  const source = args[0];
-  if (!source) throw new Error("Usage: spec load <file-or-url>");
+  const { flags, positional } = parseArgs(args);
+
+  // MCP transport flags
+  if (flags["mcp-stdio"] || flags["mcp-sse"] || flags["mcp-http"]) {
+    const spec = await loadMCP(flags);
+    saveSpec(spec);
+    out({
+      ok: true,
+      type: "mcp",
+      title: spec.title,
+      transport: spec.transport,
+      toolCount: spec.tools.length,
+    });
+    return;
+  }
+
+  const source = positional[0];
+  if (!source) throw new Error("Usage: spec load <file-or-url>  |  spec load --mcp-stdio <cmd>  |  spec load --mcp-sse <url>  |  spec load --mcp-http <url>");
 
   // Detect if it's a URL or file
   const isUrl = source.startsWith("http://") || source.startsWith("https://");
@@ -82,6 +100,48 @@ export async function loadSpec(args) {
     operationCount: countOperations(spec),
     source: source,
   });
+}
+
+async function loadMCP(flags) {
+  let transportConfig;
+
+  if (flags["mcp-stdio"]) {
+    const raw = flags["mcp-stdio"];
+    // Split on whitespace, respecting that the value is already a single flag string
+    const parts = raw.match(/(?:[^\s"]+|"[^"]*")+/g).map((p) => p.replace(/^"|"$/g, ""));
+    transportConfig = {
+      transport: "stdio",
+      command: parts[0],
+      args: parts.slice(1),
+    };
+  } else if (flags["mcp-sse"]) {
+    transportConfig = {
+      transport: "sse",
+      url: flags["mcp-sse"],
+    };
+  } else {
+    transportConfig = {
+      transport: "streamable-http",
+      url: flags["mcp-http"],
+    };
+  }
+
+  const client = await createMcpClient(transportConfig);
+  try {
+    const { tools } = await client.listTools();
+    return {
+      type: "mcp",
+      title: "MCP Server",
+      ...transportConfig,
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description || null,
+        inputSchema: t.inputSchema || null,
+      })),
+    };
+  } finally {
+    await client.close();
+  }
 }
 
 async function loadFromUrl(url) {

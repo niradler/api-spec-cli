@@ -12,7 +12,10 @@ All output is JSON. Designed for AI agents but works for humans too.
 
 WORKFLOW (follow this order):
   1. spec load <file-or-url>           Load an OpenAPI or GraphQL spec
-  2. spec list                         Browse operations (compact IDs)
+     spec load --mcp-stdio <cmd>       Load an MCP server via stdio
+     spec load --mcp-sse <url>         Load an MCP server via SSE
+     spec load --mcp-http <url>        Load an MCP server via streamable HTTP
+  2. spec list                         Browse operations/tools (compact IDs)
   3. spec show <operation>             Get params, body, response for one op
   4. spec call <operation> [options]   Execute the request
 
@@ -30,16 +33,26 @@ INSPECT:
   spec show /pet/{petId}               Match by path
   spec show "GET /pet/{petId}"         Match by method + path
   spec show publishPost                GraphQL operation name
+  spec show read_file                  MCP tool name
   spec types                           List all schema/type names
   spec types Pet                       Inspect one schema (compact, no $ref explosion)
 
 EXECUTE:
   spec call <op> --var petId=1                       Path or GraphQL variables
   spec call <op> --query status=available             Query string params
-  spec call <op> --data '{"name":"Rex"}'              JSON body
+  spec call <op> --data '{"name":"Rex"}'              JSON body / MCP tool arguments
   spec call <op> --data-file /tmp/query.json          JSON body from file (avoids shell escaping)
-  spec call <op> --header X-Custom=val                Extra headers
-  spec call <op> --method PUT                         Override HTTP method
+  spec call <op> --header X-Custom=val                Extra headers (OpenAPI/GraphQL)
+  spec call <op> --method PUT                         Override HTTP method (OpenAPI)
+
+MCP EXAMPLES:
+  spec load --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
+  spec load --mcp-sse http://localhost:3000/sse
+  spec load --mcp-http https://example.com/mcp
+  spec list
+  spec show read_file
+  spec call read_file --var path=/tmp/hello.txt
+  spec call read_file --data '{"path":"/tmp/hello.txt"}'
 
 CONFIG (persisted in .spec-cli/config.json):
   spec config set baseUrl https://api.example.com

@@ -12,6 +12,8 @@ export async function showOperation(args) {
 
   if (spec.type === "openapi") {
     showOpenAPI(spec, target);
+  } else if (spec.type === "mcp") {
+    showMCP(spec, target);
   } else {
     showGraphQL(spec, target);
   }
@@ -84,6 +86,18 @@ function showGraphQL(spec, target) {
       defaultValue: a.defaultValue || undefined,
     })),
     relatedTypes,
+  });
+}
+
+function showMCP(spec, target) {
+  const tool = spec.tools.find((t) => t.name.toLowerCase() === target.toLowerCase());
+  if (!tool) {
+    throw new Error(`Tool not found: ${target}. Run 'spec list' to see available tools.`);
+  }
+  out({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
   });
 }
 

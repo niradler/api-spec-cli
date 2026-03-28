@@ -36,6 +36,12 @@ export async function listOperations(args) {
         fullOps[i].tags?.some((t) => t.toLowerCase().includes(tag))
       );
     }
+  } else if (spec.type === "mcp") {
+    operations = spec.tools.map((t) =>
+      compact
+        ? { id: t.name, description: t.description }
+        : { id: t.name, description: t.description, inputSchema: t.inputSchema }
+    );
   } else {
     // graphql
     operations = spec.operations.map((op) =>
