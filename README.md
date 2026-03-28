@@ -1,6 +1,6 @@
 # api-spec-cli
 
-CLI for AI agents to explore and call OpenAPI and GraphQL APIs. Output is JSON by default — compact, parseable, token-efficient.
+CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is JSON by default — compact, parseable, token-efficient.
 
 ## Install
 
@@ -8,7 +8,7 @@ CLI for AI agents to explore and call OpenAPI and GraphQL APIs. Output is JSON b
 npm install -g api-spec-cli
 ```
 
-Works with Node.js 18+ or Bun. No other dependencies.
+Works with Node.js 18+. No other dependencies.
 
 ```bash
 # Or run without installing
@@ -22,22 +22,34 @@ The CLI follows a progressive discovery pattern. You never dump an entire API sp
 ### Step 1: Load the spec
 
 ```bash
-spec load https://petstore3.swagger.io/api/v3/openapi.json   # OpenAPI
-spec load ./openapi.yaml                                       # Local file
-spec load https://gql.hashnode.com                             # GraphQL (introspection)
+# OpenAPI
+spec load https://petstore3.swagger.io/api/v3/openapi.json
+spec load ./openapi.yaml
+
+# GraphQL (auto-introspects)
+spec load https://gql.hashnode.com
+
+# MCP — stdio transport (spawn a local server)
+spec load --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
+
+# MCP — SSE transport
+spec load --mcp-sse http://localhost:3000/sse
+
+# MCP — Streamable HTTP transport
+spec load --mcp-http https://docs.agno.com/mcp
 ```
 
 Output tells you what was loaded:
 ```json
-{ "ok": true, "type": "graphql", "operationCount": 114, "source": "https://gql.hashnode.com" }
+{ "ok": true, "type": "mcp", "transport": "streamable-http", "toolCount": 1 }
 ```
 
 ### Step 2: Find what you need
 
-`list` is compact by default — just operation IDs, no schemas. Use `--filter`, `--tag`, `--limit` to narrow down.
+`list` is compact by default — just IDs, no schemas. Use `--filter`, `--tag`, `--limit` to narrow down.
 
 ```bash
-spec list                          # All operations (compact IDs only)
+spec list                          # All operations/tools (compact IDs only)
 spec list --filter publish         # Search by keyword
 spec list --tag pets               # OpenAPI: filter by tag
 spec list --tag mutation           # GraphQL: filter by kind (query/mutation/subscription)
@@ -48,32 +60,32 @@ spec list --limit 10 --offset 10   # Next 10
 Compact output (token-efficient):
 ```json
 {
-  "type": "graphql",
-  "total": 5,
-  "showing": 5,
+  "type": "mcp",
+  "total": 1,
+  "showing": 1,
   "operations": [
-    { "id": "publishPost", "kind": "mutation" },
-    { "id": "publishDraft", "kind": "mutation" }
+    { "id": "search_agno", "description": "Search across the Agno knowledge base..." }
   ]
 }
 ```
 
-Use `--compact false` for full details (summary, tags, args).
+Use `--compact false` for full details (including `inputSchema` for MCP tools).
 
-### Step 3: Inspect one operation
+### Step 3: Inspect one operation or tool
 
-`show` gives you everything you need to call an operation — params, body schema, response, and related types — in one call.
+`show` gives you everything you need to make a call — params, body schema, response, and related types — in one call.
 
 ```bash
 spec show publishPost              # GraphQL: by operation name
 spec show getPetById               # OpenAPI: by operationId
 spec show /pet/{petId}             # OpenAPI: by path
 spec show "GET /pet/{petId}"       # OpenAPI: by method + path
+spec show search_agno              # MCP: by tool name
 ```
 
-Schemas are compact. Nested `$ref` references show as type names (not exploded), so the output stays small. If you need details on a referenced type, use `spec types <name>`.
+MCP output includes the full `inputSchema` so you know exactly what arguments to pass.
 
-### Step 4: Drill into types (if needed)
+### Step 4: Drill into types (OpenAPI/GraphQL only)
 
 ```bash
 spec types                         # List all schema/type names
@@ -81,12 +93,10 @@ spec types Pet                     # Inspect one schema
 spec types PublishPostInput        # Inspect a GraphQL input type
 ```
 
-This is optional — `show` already includes related types inline. Use `types` only when you need a type that wasn't included in the `show` output.
-
 ### Step 5: Call the API
 
 ```bash
-# Set base URL and auth first (persisted across calls)
+# Set base URL and auth first (persisted across calls — OpenAPI/GraphQL)
 spec config set baseUrl https://petstore3.swagger.io/api/v3
 spec config set auth YOUR_TOKEN
 
@@ -98,6 +108,10 @@ spec call addPet --data '{"name":"Rex","photoUrls":[]}'
 # GraphQL calls (auto-generates query from schema)
 spec call me
 spec call publication --var host=blog.hashnode.dev
+
+# MCP calls — use --var for individual args or --data for the full JSON object
+spec call search_agno --var query="how to create an agent"
+spec call read_file --data '{"path":"/tmp/hello.txt"}'
 ```
 
 ## Config
