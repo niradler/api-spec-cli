@@ -44,6 +44,7 @@ export async function addCmd(args) {
     entry.transport = "stdio";
     entry.command = parts[0];
     entry.args = parts.slice(1);
+    if (flags.cwd) entry.cwd = flags.cwd;
     entry.config = { env: parseKV(flags.env) };
   } else if (flags["mcp-sse"]) {
     entry.type = "mcp";
@@ -59,6 +60,14 @@ export async function addCmd(args) {
     throw new Error(
       "Specify a source: --openapi <url>, --graphql <url>, --mcp-http <url>, --mcp-sse <url>, or --mcp-stdio \"<cmd>\""
     );
+  }
+
+  // Tool filtering (MCP only)
+  if (entry.type === "mcp") {
+    const allowed = flags["allow-tool"];
+    const disabled = flags["disable-tool"];
+    if (allowed?.length) entry.config.allowedTools = allowed;
+    if (disabled?.length) entry.config.disabledTools = disabled;
   }
 
   registry.push(entry);

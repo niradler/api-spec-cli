@@ -88,6 +88,7 @@ export function inlineEntryFromFlags(flags) {
       transport: "stdio",
       command: parts[0],
       args: parts.slice(1),
+      cwd: flags.cwd,
       config: { env: parseKV(flags.env) },
     };
   }
@@ -118,10 +119,35 @@ export function inlineEntryFromFlags(flags) {
 
 // --- Internal loaders ---
 
+function matchGlob(pattern, str) {
+  // If no glob chars, use case-insensitive substring match
+  if (!pattern.includes("*") && !pattern.includes("?")) {
+    return str.toLowerCase().includes(pattern.toLowerCase());
+  }
+  const re = new RegExp(
+    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    "i"
+  );
+  return re.test(str);
+}
+
+export { matchGlob };
+
 async function loadMCPFromEntry(entry) {
   const client = await createMcpClient(entry);
   try {
     const { tools } = await client.listTools();
+    let mapped = tools.map((t) => ({
+      name: t.name,
+      description: t.description || null,
+      inputSchema: t.inputSchema || null,
+    }));
+
+    const allowed = entry.config?.allowedTools;
+    const disabled = entry.config?.disabledTools;
+    if (allowed?.length) mapped = mapped.filter((t) => allowed.some((p) => matchGlob(p, t.name)));
+    if (disabled?.length) mapped = mapped.filter((t) => !disabled.some((p) => matchGlob(p, t.name)));
+
     return {
       type: "mcp",
       title: entry.name || "MCP Server",
@@ -129,12 +155,9 @@ async function loadMCPFromEntry(entry) {
       url: entry.url,
       command: entry.command,
       args: entry.args,
+      cwd: entry.cwd,
       config: entry.config,
-      tools: tools.map((t) => ({
-        name: t.name,
-        description: t.description || null,
-        inputSchema: t.inputSchema || null,
-      })),
+      tools: mapped,
     };
   } finally {
     await client.close();

@@ -6,6 +6,7 @@ import { validateSpec } from "./commands/validate.js";
 import { typesCmd } from "./commands/types.js";
 import { addCmd } from "./commands/add.js";
 import { specsCmd, registryMutate } from "./commands/specs.js";
+import { grepCmd } from "./commands/grep.js";
 import { out, err, setFormat } from "./output.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
@@ -29,6 +30,9 @@ REGISTRY (register once, use anywhere):
   spec add <name> --mcp-stdio "<cmd>"  Register an MCP server (stdio)
     Options: --description <text>  --base-url <url>  --auth <token>
              --header k=v (repeatable)  --env KEY=VAL (repeatable, stdio only)
+             --cwd <path> (stdio only)
+             --allow-tool <glob> (repeatable, MCP only)
+             --disable-tool <glob> (repeatable, MCP only)
 
   spec specs                           List all registered specs
   spec specs --compact false           Show full entry config
@@ -43,6 +47,8 @@ DISCOVER:
   spec list --spec <name> --tag pets          OpenAPI tag or GraphQL kind
   spec list --spec <name> --limit 10          Paginate
   spec list --mcp-http <url>           Inline: no registration needed
+  spec grep <pattern>                  Search across all registered specs
+  spec grep <pattern> --spec <name>    Search within one spec
 
 INSPECT:
   spec show --spec <name> <op>         Operation details (params, body, responses)
@@ -55,6 +61,7 @@ CALL:
   spec call --spec <name> <op> --query status=available  Query params
   spec call --spec <name> <op> --data '{"name":"Rex"}'   JSON body / MCP args
   spec call --spec <name> <op> --data-file args.json     Body from file
+  echo '{"query":"foo"}' | spec call --spec <name> <op>  Pipe JSON from stdin
   spec call --spec <name> <op> --header X-Custom=val     Extra headers
   spec call --spec <name> <op> --method PUT              Override HTTP method
 
@@ -73,6 +80,10 @@ CONFIG (persisted in .spec-cli/config.json — lowest priority):
 OTHER:
   spec validate <file-or-url>          Check OpenAPI spec for errors
   --format json|text|yaml              Output format (default: json)
+
+ENV VARS (MCP):
+  MCP_MAX_RETRIES=3        Retry attempts on connection failure (default: 3)
+  MCP_RETRY_DELAY=1000     Base retry delay in ms, doubles each attempt (default: 1000)
 
 EXAMPLES:
   spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
@@ -147,6 +158,9 @@ export async function run(args) {
         break;
       case "refresh":
         await registryMutate("refresh", args.slice(1));
+        break;
+      case "grep":
+        await grepCmd(args.slice(1));
         break;
       default:
         err(`Unknown command: ${cmd}. Run 'spec help' for usage.`);

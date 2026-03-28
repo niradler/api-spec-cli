@@ -15,6 +15,20 @@ export async function callOperation(args) {
     flags.data = readFileSync(flags["data-file"], "utf-8").trim();
   }
 
+  // Read from stdin when piped and no --data/--data-file provided.
+  // isTTY is true in a terminal, undefined when piped — so !isTTY catches piped input.
+  // Wrapped in try-catch so test runners with closed stdin don't crash.
+  if (!flags.data && !process.stdin.isTTY) {
+    try {
+      const chunks = [];
+      for await (const chunk of process.stdin) chunks.push(chunk);
+      const piped = Buffer.concat(chunks).toString("utf-8").trim();
+      if (piped) flags.data = piped;
+    } catch {
+      // stdin unavailable (test runner, closed pipe) — ignore
+    }
+  }
+
   const { spec, entry } = await resolveActiveSpec(flags);
   const config = resolveConfig(flags, entry);
 

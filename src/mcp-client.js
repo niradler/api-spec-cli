@@ -3,15 +3,31 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-export async function createMcpClient(spec) {
+const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
+const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
+
+// Expand ${VAR} placeholders from process.env at call time
+function expandEnv(val) {
+  return val.replace(/\$\{([^}]+)\}/g, (_, name) => {
+    if (!(name in process.env)) throw new Error(`Environment variable not set: ${name}`);
+    return process.env[name];
+  });
+}
+
+async function connect(spec) {
   const client = new Client({ name: "spec-cli", version: "1.0.0" });
 
   let transport;
   if (spec.transport === "stdio") {
+    const rawEnv = spec.config?.env || {};
+    const expandedEnv = Object.fromEntries(
+      Object.entries(rawEnv).map(([k, v]) => [k, expandEnv(v)])
+    );
     transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
-      env: spec.config?.env ? { ...process.env, ...spec.config.env } : undefined,
+      env: Object.keys(expandedEnv).length > 0 ? { ...process.env, ...expandedEnv } : undefined,
+      cwd: spec.cwd,
     });
   } else if (spec.transport === "sse") {
     const h = spec.config?.headers;
@@ -29,4 +45,19 @@ export async function createMcpClient(spec) {
 
   await client.connect(transport);
   return client;
+}
+
+export async function createMcpClient(spec) {
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await connect(spec);
+    } catch (e) {
+      lastError = e;
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError;
 }
