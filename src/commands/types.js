@@ -1,12 +1,10 @@
-import { getSpec } from "../store.js";
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
+import { resolveActiveSpec } from "../resolve.js";
 
 export async function typesCmd(args) {
-  const spec = getSpec();
-  if (!spec) throw new Error("No spec loaded. Run: spec load <file-or-url>");
-
   const { positional, flags } = parseArgs(args);
+  const { spec } = await resolveActiveSpec(flags);
   const target = positional[0];
 
   if (spec.type === "openapi") {

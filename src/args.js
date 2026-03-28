@@ -2,7 +2,7 @@
 // Supports: --flag value, --flag=value, and positional args
 // Repeatable flags (--query, --header, --var) are collected into arrays.
 
-const REPEATABLE = new Set(["query", "header", "var"]);
+const REPEATABLE = new Set(["query", "header", "var", "env"]);
 
 export function parseArgs(args) {
   const flags = {};

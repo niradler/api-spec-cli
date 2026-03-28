@@ -39,24 +39,19 @@ function mockGraphQL() {
   return JSON.parse(readFileSync(resolve(fixturesDir, "graphql-spec.json"), "utf-8"));
 }
 
-mock.module("../src/store.js", () => {
-  let spec = null;
-  return {
-    getSpec: () => spec,
-    saveSpec: (s) => { spec = s; },
-    getConfig: () => ({ baseUrl: null, headers: {}, auth: null }),
-    setConfig: () => {},
-    _setSpec: (s) => { spec = s; },
-  };
-});
+let currentSpec = null;
+
+mock.module("../src/resolve.js", () => ({
+  resolveActiveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
+  resolveConfig: (_flags, _entry) => ({ baseUrl: null, headers: {}, auth: null }),
+}));
 
 const { showOperation } = await import("../src/commands/show.js");
-const store = await import("../src/store.js");
 
 describe("show - OpenAPI", () => {
   beforeEach(() => {
     captured = null;
-    store._setSpec(mockOpenAPI());
+    currentSpec = mockOpenAPI();
   });
 
   test("finds by operationId", async () => {
@@ -117,7 +112,7 @@ describe("show - OpenAPI", () => {
 describe("show - GraphQL", () => {
   beforeEach(() => {
     captured = null;
-    store._setSpec(mockGraphQL());
+    currentSpec = mockGraphQL();
   });
 
   test("shows operation with args", async () => {

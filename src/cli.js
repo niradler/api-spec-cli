@@ -1,77 +1,103 @@
-import { loadSpec } from "./commands/load.js";
 import { listOperations } from "./commands/list.js";
 import { showOperation } from "./commands/show.js";
 import { callOperation } from "./commands/call.js";
 import { configCmd } from "./commands/config.js";
 import { validateSpec } from "./commands/validate.js";
 import { typesCmd } from "./commands/types.js";
+import { addCmd } from "./commands/add.js";
+import { specsCmd, registryMutate } from "./commands/specs.js";
 import { out, err, setFormat } from "./output.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
 All output is JSON. Designed for AI agents but works for humans too.
 
-WORKFLOW (follow this order):
-  1. spec load <file-or-url>           Load an OpenAPI or GraphQL spec
-     spec load --mcp-stdio <cmd>       Load an MCP server via stdio
-     spec load --mcp-sse <url>         Load an MCP server via SSE
-     spec load --mcp-http <url>        Load an MCP server via streamable HTTP
-  2. spec list                         Browse operations/tools (compact IDs)
-  3. spec show <operation>             Get params, body, response for one op
-  4. spec call <operation> [options]   Execute the request
+Every command is stateless — specify the spec source on each call.
 
-  Use spec types [name] to inspect a schema/type referenced by show.
-  Use spec config to set baseUrl, auth, and headers before calling.
+SPEC SOURCE (required on every list/show/call):
+  --spec <name>                        Use a registered spec (auto-fetches + caches)
+  --openapi <url-or-file>              OpenAPI inline (no registration needed)
+  --graphql <url>                      GraphQL inline
+  --mcp-http <url>                     MCP streamable-HTTP inline
+  --mcp-sse <url>                      MCP SSE inline
+  --mcp-stdio "<cmd args>"             MCP stdio inline
 
-DISCOVERY (narrowing down):
-  spec list                            All operations (just IDs)
-  spec list --filter user              Search across all fields
-  spec list --tag pets                 OpenAPI tag or GraphQL kind (query/mutation)
-  spec list --limit 10 --offset 20     Paginate large APIs
+REGISTRY (register once, use anywhere):
+  spec add <name> --openapi <url>      Register an OpenAPI spec
+  spec add <name> --graphql <url>      Register a GraphQL endpoint
+  spec add <name> --mcp-http <url>     Register an MCP server (streamable-HTTP)
+  spec add <name> --mcp-sse <url>      Register an MCP server (SSE)
+  spec add <name> --mcp-stdio "<cmd>"  Register an MCP server (stdio)
+    Options: --description <text>  --base-url <url>  --auth <token>
+             --header k=v (repeatable)  --env KEY=VAL (repeatable, stdio only)
+
+  spec specs                           List all registered specs
+  spec specs --compact false           Show full entry config
+  spec remove <name>                   Delete from registry
+  spec enable <name>                   Enable a disabled spec
+  spec disable <name>                  Disable without removing
+  spec refresh <name>                  Force re-fetch and update cache
+
+DISCOVER:
+  spec list --spec <name>              All operations/tools (compact IDs)
+  spec list --spec <name> --filter user       Search by keyword
+  spec list --spec <name> --tag pets          OpenAPI tag or GraphQL kind
+  spec list --spec <name> --limit 10          Paginate
+  spec list --mcp-http <url>           Inline: no registration needed
 
 INSPECT:
-  spec show getPetById                 Match by operationId
-  spec show /pet/{petId}               Match by path
-  spec show "GET /pet/{petId}"         Match by method + path
-  spec show publishPost                GraphQL operation name
-  spec show read_file                  MCP tool name
-  spec types                           List all schema/type names
-  spec types Pet                       Inspect one schema (compact, no $ref explosion)
+  spec show --spec <name> <op>         Operation details (params, body, responses)
+  spec show --spec <name> <tool>       MCP tool input schema
+  spec types --spec <name>             List all schema/type names (OpenAPI/GraphQL)
+  spec types --spec <name> <TypeName>  Inspect one type
 
-EXECUTE:
-  spec call <op> --var petId=1                       Path or GraphQL variables
-  spec call <op> --query status=available             Query string params
-  spec call <op> --data '{"name":"Rex"}'              JSON body / MCP tool arguments
-  spec call <op> --data-file /tmp/query.json          JSON body from file (avoids shell escaping)
-  spec call <op> --header X-Custom=val                Extra headers (OpenAPI/GraphQL)
-  spec call <op> --method PUT                         Override HTTP method (OpenAPI)
+CALL:
+  spec call --spec <name> <op> --var petId=1            Path/GraphQL vars
+  spec call --spec <name> <op> --query status=available  Query params
+  spec call --spec <name> <op> --data '{"name":"Rex"}'   JSON body / MCP args
+  spec call --spec <name> <op> --data-file args.json     Body from file
+  spec call --spec <name> <op> --header X-Custom=val     Extra headers
+  spec call --spec <name> <op> --method PUT              Override HTTP method
 
-MCP EXAMPLES:
-  spec load --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
-  spec load --mcp-sse http://localhost:3000/sse
-  spec load --mcp-http https://example.com/mcp
-  spec list
-  spec show read_file
-  spec call read_file --var path=/tmp/hello.txt
-  spec call read_file --data '{"path":"/tmp/hello.txt"}'
+PER-CALL OVERRIDES (win over registry entry config):
+  --auth <token>        Override auth for this call
+  --base-url <url>      Override base URL for this call
+  --header k=v          Merge/override headers for this call
 
-CONFIG (persisted in .spec-cli/config.json):
+CONFIG (persisted in .spec-cli/config.json — lowest priority):
   spec config set baseUrl https://api.example.com
-  spec config set auth <token>                        Auto-adds Bearer prefix
-  spec config set headers.X-API-Key <key>             Dot notation for nested keys
-  spec config get                                     Show current config
-  spec config unset auth                              Remove a key
+  spec config set auth <token>
+  spec config set headers.X-API-Key <key>
+  spec config get
+  spec config unset auth
 
 OTHER:
   spec validate <file-or-url>          Check OpenAPI spec for errors
-  --format json|text|yaml              Output format (default: json)`;
+  --format json|text|yaml              Output format (default: json)
+
+EXAMPLES:
+  spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
+  spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json \\
+    --base-url https://petstore3.swagger.io/api/v3
+  spec specs
+  spec list  --spec agno
+  spec show  --spec agno search_agno
+  spec call  --spec agno search_agno --var query="agents"
+  spec call  --spec agno search_agno --var query="foo" --header X-Tenant=acme
+  spec list  --mcp-http https://docs.agno.com/mcp    (inline, no registration)`;
 
 export async function run(args) {
-  // Extract --format before routing
-  const formatIdx = args.indexOf("--format");
-  if (formatIdx !== -1) {
-    setFormat(args[formatIdx + 1]);
-    args = [...args.slice(0, formatIdx), ...args.slice(formatIdx + 2)];
+  // Extract --format before routing (supports both --format json and --format=json)
+  const newArgs = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--format" && i + 1 < args.length) {
+      setFormat(args[++i]);
+    } else if (args[i].startsWith("--format=")) {
+      setFormat(args[i].slice(9));
+    } else {
+      newArgs.push(args[i]);
+    }
   }
+  args = newArgs;
 
   const cmd = args[0];
 
@@ -82,9 +108,6 @@ export async function run(args) {
 
   try {
     switch (cmd) {
-      case "load":
-        await loadSpec(args.slice(1));
-        break;
       case "list":
       case "ls":
         await listOperations(args.slice(1));
@@ -105,6 +128,25 @@ export async function run(args) {
       case "config":
       case "cfg":
         await configCmd(args.slice(1));
+        break;
+      case "add":
+        await addCmd(args.slice(1));
+        break;
+      case "specs":
+      case "registry":
+        await specsCmd(args.slice(1));
+        break;
+      case "remove":
+        await registryMutate("remove", args.slice(1));
+        break;
+      case "enable":
+        await registryMutate("enable", args.slice(1));
+        break;
+      case "disable":
+        await registryMutate("disable", args.slice(1));
+        break;
+      case "refresh":
+        await registryMutate("refresh", args.slice(1));
         break;
       default:
         err(`Unknown command: ${cmd}. Run 'spec help' for usage.`);

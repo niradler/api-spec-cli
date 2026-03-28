@@ -1,14 +1,13 @@
-import { getSpec } from "../store.js";
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
+import { resolveActiveSpec } from "../resolve.js";
 
 export async function showOperation(args) {
-  const { positional } = parseArgs(args);
+  const { flags, positional } = parseArgs(args);
   const target = positional[0];
-  if (!target) throw new Error("Usage: spec show <operationId-or-path>");
+  if (!target) throw new Error("Usage: spec show <operationId-or-path> [--spec <name> | --openapi <url> | ...]");
 
-  const spec = getSpec();
-  if (!spec) throw new Error("No spec loaded. Run: spec load <file-or-url>");
+  const { spec } = await resolveActiveSpec(flags);
 
   if (spec.type === "openapi") {
     showOpenAPI(spec, target);
@@ -22,13 +21,11 @@ export async function showOperation(args) {
 function showOpenAPI(spec, target) {
   const lower = target.toLowerCase();
 
-  const op = spec.operations.find((o) => {
-    return (
-      o.id.toLowerCase() === lower ||
-      o.path.toLowerCase() === lower ||
-      `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
-    );
-  });
+  const op = spec.operations.find((o) =>
+    o.id.toLowerCase() === lower ||
+    o.path.toLowerCase() === lower ||
+    `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
+  );
 
   if (!op) {
     throw new Error(`Operation not found: ${target}. Run 'spec list' to see available operations.`);
@@ -61,6 +58,18 @@ function showOpenAPI(spec, target) {
   });
 }
 
+function showMCP(spec, target) {
+  const tool = spec.tools.find((t) => t.name.toLowerCase() === target.toLowerCase());
+  if (!tool) {
+    throw new Error(`Tool not found: ${target}. Run 'spec list' to see available tools.`);
+  }
+  out({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  });
+}
+
 function showGraphQL(spec, target) {
   const lower = target.toLowerCase();
 
@@ -89,18 +98,6 @@ function showGraphQL(spec, target) {
   });
 }
 
-function showMCP(spec, target) {
-  const tool = spec.tools.find((t) => t.name.toLowerCase() === target.toLowerCase());
-  if (!tool) {
-    throw new Error(`Tool not found: ${target}. Run 'spec list' to see available tools.`);
-  }
-  out({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  });
-}
-
 // --- Helpers ---
 
 function resolveRef(obj, root) {
@@ -108,9 +105,7 @@ function resolveRef(obj, root) {
   if (obj.$ref) {
     const path = obj.$ref.replace("#/", "").split("/");
     let resolved = root;
-    for (const p of path) {
-      resolved = resolved?.[p];
-    }
+    for (const p of path) resolved = resolved?.[p];
     return resolved || obj;
   }
   return obj;
@@ -120,7 +115,6 @@ function resolveRequestBody(body, root) {
   if (!body) return null;
   const resolved = resolveRef(body, root);
   if (resolved?.content) {
-    // Only show application/json if available (most useful for agents)
     const jsonContent = resolved.content["application/json"];
     if (jsonContent) {
       return {
@@ -129,7 +123,6 @@ function resolveRequestBody(body, root) {
         schema: resolveSchema(jsonContent.schema, root),
       };
     }
-    // Fallback: show first content type
     const [mediaType, value] = Object.entries(resolved.content)[0];
     return {
       description: resolved.description || undefined,
@@ -141,7 +134,6 @@ function resolveRequestBody(body, root) {
   return resolved;
 }
 
-// Only show success response schema — agent doesn't need error schemas to make a call
 function resolveResponsesCompact(responses, root) {
   if (!responses) return null;
   const result = {};
@@ -149,14 +141,9 @@ function resolveResponsesCompact(responses, root) {
     const resolved = resolveRef(resp, root);
     if (resolved?.content) {
       const jsonContent = resolved.content["application/json"];
-      if (jsonContent) {
-        result[code] = {
-          description: resolved.description,
-          schema: resolveSchema(jsonContent.schema, root),
-        };
-      } else {
-        result[code] = { description: resolved.description };
-      }
+      result[code] = jsonContent
+        ? { description: resolved.description, schema: resolveSchema(jsonContent.schema, root) }
+        : { description: resolved.description };
     } else {
       result[code] = { description: resolved.description };
     }
@@ -166,18 +153,12 @@ function resolveResponsesCompact(responses, root) {
 
 function resolveSchema(schema, root, depth = 0) {
   if (!schema || depth > 3) return schema;
-  if (schema.$ref) {
-    const resolved = resolveRef(schema, root);
-    // Resolve one more level for the top-level ref
-    return resolveSchema(resolved, root, depth + 1);
-  }
+  if (schema.$ref) return resolveSchema(resolveRef(schema, root), root, depth + 1);
   if (schema.properties) {
-    const result = { type: schema.type, required: schema.required };
-    result.properties = {};
+    const result = { type: schema.type, required: schema.required, properties: {} };
     for (const [key, val] of Object.entries(schema.properties)) {
       if (val.$ref) {
-        const refName = val.$ref.split("/").pop();
-        result.properties[key] = { $ref: refName };
+        result.properties[key] = { $ref: val.$ref.split("/").pop() };
       } else if (val.type === "array" && val.items?.$ref) {
         result.properties[key] = { type: "array", items: val.items.$ref.split("/").pop() };
       } else {
@@ -191,9 +172,7 @@ function resolveSchema(schema, root, depth = 0) {
     return result;
   }
   if (schema.items) {
-    if (schema.items.$ref) {
-      return { type: "array", items: schema.items.$ref.split("/").pop() };
-    }
+    if (schema.items.$ref) return { type: "array", items: schema.items.$ref.split("/").pop() };
     return { type: "array", items: resolveSchema(schema.items, root, depth + 1) };
   }
   return schema;
@@ -209,30 +188,16 @@ function findRelatedTypes(op, types) {
   }
 
   extractTypeNames(op.returnType);
-  for (const arg of op.args || []) {
-    extractTypeNames(flattenType(arg.type));
-  }
+  for (const arg of op.args || []) extractTypeNames(flattenType(arg.type));
 
   const scalars = new Set(["String", "Int", "Float", "Boolean", "ID"]);
   return types
     .filter((t) => names.has(t.name) && !scalars.has(t.name))
     .map((t) => {
       const result = { name: t.name, kind: t.kind };
-      if (t.fields) {
-        result.fields = t.fields.map((f) => ({
-          name: f.name,
-          type: flattenType(f.type),
-        }));
-      }
-      if (t.inputFields) {
-        result.inputFields = t.inputFields.map((f) => ({
-          name: f.name,
-          type: flattenType(f.type),
-        }));
-      }
-      if (t.enumValues) {
-        result.enumValues = t.enumValues.map((e) => e.name);
-      }
+      if (t.fields) result.fields = t.fields.map((f) => ({ name: f.name, type: flattenType(f.type) }));
+      if (t.inputFields) result.inputFields = t.inputFields.map((f) => ({ name: f.name, type: flattenType(f.type) }));
+      if (t.enumValues) result.enumValues = t.enumValues.map((e) => e.name);
       return result;
     });
 }

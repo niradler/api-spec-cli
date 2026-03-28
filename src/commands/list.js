@@ -1,22 +1,27 @@
-import { getSpec } from "../store.js";
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
+import { resolveActiveSpec } from "../resolve.js";
 
 export async function listOperations(args) {
-  const spec = getSpec();
-  if (!spec) throw new Error("No spec loaded. Run: spec load <file-or-url>");
-
   const opts = parseArgs(args);
-  const filter = opts.flags.filter?.toLowerCase();
-  const compact = opts.flags.compact !== "false"; // compact by default
-  const limit = parseInt(opts.flags.limit) || 0;
-  const offset = parseInt(opts.flags.offset) || 0;
-  const tag = opts.flags.tag?.toLowerCase();
+  const { flags } = opts;
+
+  const { spec } = await resolveActiveSpec(flags);
+
+  const filter = flags.filter?.toLowerCase();
+  const compact = flags.compact !== "false";
+  const limit = parseInt(flags.limit) || 0;
+  const offset = parseInt(flags.offset) || 0;
+  const tag = flags.tag?.toLowerCase();
 
   let operations;
 
   if (spec.type === "openapi") {
-    operations = spec.operations.map((op) =>
+    let source = spec.operations;
+    if (tag) {
+      source = source.filter((op) => op.tags?.some((t) => t.toLowerCase().includes(tag)));
+    }
+    operations = source.map((op) =>
       compact
         ? { id: op.id, method: op.method, path: op.path }
         : {
@@ -28,14 +33,6 @@ export async function listOperations(args) {
             deprecated: op.deprecated,
           }
     );
-
-    // Filter by tag
-    if (tag) {
-      const fullOps = spec.operations;
-      operations = operations.filter((_, i) =>
-        fullOps[i].tags?.some((t) => t.toLowerCase().includes(tag))
-      );
-    }
   } else if (spec.type === "mcp") {
     operations = spec.tools.map((t) =>
       compact
@@ -57,28 +54,21 @@ export async function listOperations(args) {
           }
     );
 
-    // Filter by kind (query/mutation/subscription)
     if (tag) {
       operations = operations.filter((op) => op.kind === tag);
     }
   }
 
   if (filter) {
-    operations = operations.filter((op) => {
-      const text = JSON.stringify(op).toLowerCase();
-      return text.includes(filter);
-    });
+    operations = operations.filter((op) =>
+      JSON.stringify(op).toLowerCase().includes(filter)
+    );
   }
 
   const total = operations.length;
 
-  // Pagination
-  if (offset > 0) {
-    operations = operations.slice(offset);
-  }
-  if (limit > 0) {
-    operations = operations.slice(0, limit);
-  }
+  if (offset > 0) operations = operations.slice(offset);
+  if (limit > 0)  operations = operations.slice(0, limit);
 
   out({
     type: spec.type,

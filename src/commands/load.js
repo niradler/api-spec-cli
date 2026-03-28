@@ -1,9 +1,7 @@
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import YAML from "yaml";
-import { saveSpec } from "../store.js";
-import { out, err } from "../output.js";
-import { parseArgs } from "../args.js";
+import { parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
 
 const INTROSPECTION_QUERY = `{
@@ -61,78 +59,77 @@ fragment TypeRef on __Type {
   }
 }`;
 
-export async function loadSpec(args) {
-  const { flags, positional } = parseArgs(args);
-
-  // MCP transport flags
-  if (flags["mcp-stdio"] || flags["mcp-sse"] || flags["mcp-http"]) {
-    const spec = await loadMCP(flags);
-    saveSpec(spec);
-    out({
-      ok: true,
-      type: "mcp",
-      title: spec.title,
-      transport: spec.transport,
-      toolCount: spec.tools.length,
-    });
-    return;
-  }
-
-  const source = positional[0];
-  if (!source) throw new Error("Usage: spec load <file-or-url>  |  spec load --mcp-stdio <cmd>  |  spec load --mcp-sse <url>  |  spec load --mcp-http <url>");
-
-  // Detect if it's a URL or file
-  const isUrl = source.startsWith("http://") || source.startsWith("https://");
-
-  let spec;
-
-  if (isUrl) {
-    spec = await loadFromUrl(source);
-  } else {
-    spec = loadFromFile(source);
-  }
-
-  saveSpec(spec);
-  out({
-    ok: true,
-    type: spec.type,
-    title: spec.title || null,
-    operationCount: countOperations(spec),
-    source: source,
-  });
+/**
+ * Resolve a spec from a registry entry or inline flags entry.
+ * Entry shape:
+ *   { type: "openapi", source: "<url-or-file>", config: { headers, auth } }
+ *   { type: "graphql", source: "<url>", config: { headers, auth } }
+ *   { type: "mcp", transport: "stdio|sse|streamable-http", url?, command?, args?, config: { headers, env } }
+ */
+export async function resolveSpec(entry) {
+  if (entry.type === "mcp") return await loadMCPFromEntry(entry);
+  if (entry.type === "graphql") return await loadGraphQL(entry.source, entry.config?.headers);
+  // openapi — url or file; skip GraphQL probe since type is explicitly declared
+  const isUrl = entry.source?.startsWith("http://") || entry.source?.startsWith("https://");
+  return isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
 }
 
-async function loadMCP(flags) {
-  let transportConfig;
-
+/**
+ * Build an inline entry from flags (for ad-hoc commands like --mcp-http <url>).
+ * Returns null if no inline source flags present.
+ */
+export function inlineEntryFromFlags(flags) {
   if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
-    // Split on whitespace, respecting that the value is already a single flag string
-    const parts = raw.match(/(?:[^\s"]+|"[^"]*")+/g).map((p) => p.replace(/^"|"$/g, ""));
-    transportConfig = {
+    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
+    if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
+    return {
+      type: "mcp",
       transport: "stdio",
       command: parts[0],
       args: parts.slice(1),
-    };
-  } else if (flags["mcp-sse"]) {
-    transportConfig = {
-      transport: "sse",
-      url: flags["mcp-sse"],
-    };
-  } else {
-    transportConfig = {
-      transport: "streamable-http",
-      url: flags["mcp-http"],
+      config: { env: parseKV(flags.env) },
     };
   }
+  if (flags["mcp-sse"]) {
+    return {
+      type: "mcp",
+      transport: "sse",
+      url: flags["mcp-sse"],
+      config: { headers: parseKV(flags.header) },
+    };
+  }
+  if (flags["mcp-http"]) {
+    return {
+      type: "mcp",
+      transport: "streamable-http",
+      url: flags["mcp-http"],
+      config: { headers: parseKV(flags.header) },
+    };
+  }
+  if (flags.graphql) {
+    return { type: "graphql", source: flags.graphql, config: { headers: parseKV(flags.header) } };
+  }
+  if (flags.openapi) {
+    return { type: "openapi", source: flags.openapi, config: { headers: parseKV(flags.header), baseUrl: flags["base-url"] || null } };
+  }
+  return null;
+}
 
-  const client = await createMcpClient(transportConfig);
+// --- Internal loaders ---
+
+async function loadMCPFromEntry(entry) {
+  const client = await createMcpClient(entry);
   try {
     const { tools } = await client.listTools();
     return {
       type: "mcp",
-      title: "MCP Server",
-      ...transportConfig,
+      title: entry.name || "MCP Server",
+      transport: entry.transport,
+      url: entry.url,
+      command: entry.command,
+      args: entry.args,
+      config: entry.config,
       tools: tools.map((t) => ({
         name: t.name,
         description: t.description || null,
@@ -144,24 +141,21 @@ async function loadMCP(flags) {
   }
 }
 
-async function loadFromUrl(url) {
-  // Try GraphQL introspection first if URL doesn't end with known extensions
+async function loadFromUrl(url, skipGraphQLProbe = false) {
   const lowerUrl = url.toLowerCase();
   const isLikelyFile =
     lowerUrl.endsWith(".json") ||
     lowerUrl.endsWith(".yaml") ||
     lowerUrl.endsWith(".yml");
 
-  if (!isLikelyFile) {
-    // Try GraphQL introspection
+  if (!isLikelyFile && !skipGraphQLProbe) {
     try {
       return await loadGraphQL(url);
-    } catch (e) {
+    } catch {
       // Fall through to OpenAPI
     }
   }
 
-  // Fetch as OpenAPI
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   const text = await res.text();
@@ -175,10 +169,10 @@ function loadFromFile(path) {
   return parseOpenAPI(text, path);
 }
 
-async function loadGraphQL(url) {
+async function loadGraphQL(url, extraHeaders = {}) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify({ query: INTROSPECTION_QUERY }),
   });
 
@@ -190,8 +184,6 @@ async function loadGraphQL(url) {
   }
 
   const schema = json.data.__schema;
-
-  // Extract operations from query/mutation/subscription types
   const operations = [];
   const typeMap = {};
   for (const t of schema.types) {
@@ -237,7 +229,6 @@ function parseOpenAPI(text, source) {
     doc = YAML.parse(text);
   }
 
-  // Detect OpenAPI vs Swagger
   const version = doc.openapi || doc.swagger;
   if (!version) throw new Error("Not a valid OpenAPI/Swagger spec");
 
@@ -283,8 +274,4 @@ function flattenType(t) {
     return inner;
   }
   return t.kind;
-}
-
-function countOperations(spec) {
-  return spec.operations?.length || 0;
 }

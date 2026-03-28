@@ -11,11 +11,18 @@ export async function createMcpClient(spec) {
     transport = new StdioClientTransport({
       command: spec.command,
       args: spec.args,
+      env: spec.config?.env ? { ...process.env, ...spec.config.env } : undefined,
     });
   } else if (spec.transport === "sse") {
-    transport = new SSEClientTransport(new URL(spec.url));
+    const h = spec.config?.headers;
+    transport = new SSEClientTransport(new URL(spec.url), {
+      requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
+    });
   } else if (spec.transport === "streamable-http") {
-    transport = new StreamableHTTPClientTransport(new URL(spec.url));
+    const h = spec.config?.headers;
+    transport = new StreamableHTTPClientTransport(new URL(spec.url), {
+      requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
+    });
   } else {
     throw new Error(`Unknown MCP transport: ${spec.transport}. Supported: stdio, sse, streamable-http`);
   }

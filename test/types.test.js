@@ -19,24 +19,19 @@ function mockGraphQL() {
   return JSON.parse(readFileSync(resolve(fixturesDir, "graphql-spec.json"), "utf-8"));
 }
 
-mock.module("../src/store.js", () => {
-  let spec = null;
-  return {
-    getSpec: () => spec,
-    saveSpec: (s) => { spec = s; },
-    getConfig: () => ({ baseUrl: null, headers: {}, auth: null }),
-    setConfig: () => {},
-    _setSpec: (s) => { spec = s; },
-  };
-});
+let currentSpec = null;
+
+mock.module("../src/resolve.js", () => ({
+  resolveActiveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
+  resolveConfig: (_flags, _entry) => ({ baseUrl: null, headers: {}, auth: null }),
+}));
 
 const { typesCmd } = await import("../src/commands/types.js");
-const store = await import("../src/store.js");
 
 describe("types - OpenAPI", () => {
   beforeEach(() => {
     captured = null;
-    store._setSpec(mockOpenAPI());
+    currentSpec = mockOpenAPI();
   });
 
   test("lists all schema names", async () => {
@@ -70,7 +65,7 @@ describe("types - OpenAPI", () => {
 describe("types - GraphQL", () => {
   beforeEach(() => {
     captured = null;
-    store._setSpec(mockGraphQL());
+    currentSpec = mockGraphQL();
   });
 
   test("lists types grouped by kind", async () => {
