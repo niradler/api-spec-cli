@@ -15,8 +15,13 @@ const EMPTY = { mcp: {}, openapi: {}, graphql: {} };
 export function getRegistry() {
   if (!existsSync(REGISTRY_FILE)) return { ...EMPTY };
   try {
-    return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
-  } catch {
+    const data = JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(`Registry file has old format: ${REGISTRY_FILE}. Delete it to reset.`);
+    }
+    return data;
+  } catch (e) {
+    if (e.message.includes("old format")) throw e;
     throw new Error(`Registry file is corrupt: ${REGISTRY_FILE}. Delete it to reset.`);
   }
 }
