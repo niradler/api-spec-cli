@@ -18,8 +18,8 @@ async function connect(spec) {
   const client = new Client({ name: "spec-cli", version: "1.0.0" });
 
   let transport;
-  if (spec.transport === "stdio") {
-    const rawEnv = spec.config?.env || {};
+  if (spec.type === "stdio") {
+    const rawEnv = spec.env || {};
     const expandedEnv = Object.fromEntries(
       Object.entries(rawEnv).map(([k, v]) => [k, expandEnv(v)])
     );
@@ -29,18 +29,18 @@ async function connect(spec) {
       env: Object.keys(expandedEnv).length > 0 ? { ...process.env, ...expandedEnv } : undefined,
       cwd: spec.cwd,
     });
-  } else if (spec.transport === "sse") {
-    const h = spec.config?.headers;
+  } else if (spec.type === "sse") {
+    const h = spec.headers;
     transport = new SSEClientTransport(new URL(spec.url), {
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
-  } else if (spec.transport === "streamable-http") {
-    const h = spec.config?.headers;
+  } else if (spec.type === "http") {
+    const h = spec.headers;
     transport = new StreamableHTTPClientTransport(new URL(spec.url), {
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else {
-    throw new Error(`Unknown MCP transport: ${spec.transport}. Supported: stdio, sse, streamable-http`);
+    throw new Error(`Unknown MCP type: ${spec.type}. Supported: stdio, sse, http`);
   }
 
   await client.connect(transport);
