@@ -30,7 +30,6 @@ export async function specsCmd(args) {
       return {
         name: e.name,
         type: e.type,
-        transport: e.transport,
         description: e.description || null,
         enabled: e.enabled,
       };

@@ -72,7 +72,7 @@ function applyFilter(items, nameFn, allowed, disabled) {
  * Entry shape:
  *   { type: "openapi", source: "<url-or-file>", config: { headers, auth } }
  *   { type: "graphql", source: "<url>", config: { headers, auth } }
- *   { type: "mcp", transport: "stdio|sse|streamable-http", url?, command?, args?, config: { headers, env } }
+ *   { _section: "mcp", type: "stdio"|"sse"|"http", url?, command?, args?, env?, headers? }
  */
 export async function fetchSpec(entry) {
   if (entry._section === "mcp") return await loadMCPFromEntry(entry);
