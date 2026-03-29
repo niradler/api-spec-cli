@@ -66,13 +66,11 @@ export async function addCmd(args) {
     );
   }
 
-  // Tool filtering (MCP only)
-  if (entry.type === "mcp") {
-    const allowed = flags["allow-tool"];
-    const disabled = flags["disable-tool"];
-    if (allowed?.length) entry.config.allowedTools = allowed;
-    if (disabled?.length) entry.config.disabledTools = disabled;
-  }
+  // Operation filtering (all types)
+  const allowed = flags["allow-tool"];
+  const disabled = flags["disable-tool"];
+  if (allowed?.length) entry.config.allowedTools = allowed;
+  if (disabled?.length) entry.config.disabledTools = disabled;
 
   registry.push(entry);
   saveRegistry(registry);

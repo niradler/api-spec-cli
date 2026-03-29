@@ -90,3 +90,75 @@ describe("MCP tool filtering logic", () => {
     expect(result).toHaveLength(4);
   });
 });
+
+const ALL_OPS_OPENAPI = [
+  { id: "listPets", method: "GET", path: "/pets" },
+  { id: "getPet", method: "GET", path: "/pets/{petId}" },
+  { id: "createPet", method: "POST", path: "/pets" },
+  { id: "deletePet", method: "DELETE", path: "/pets/{petId}" },
+];
+
+function applyOpFilter(ops, allowed, disabled) {
+  let result = [...ops];
+  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchGlob(p, op.id)));
+  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchGlob(p, op.id)));
+  return result;
+}
+
+describe("OpenAPI operation filtering", () => {
+  test("no filter returns all operations", () => {
+    expect(applyOpFilter(ALL_OPS_OPENAPI, undefined, undefined)).toHaveLength(4);
+  });
+
+  test("allowedTools keeps only matching operations by id", () => {
+    const result = applyOpFilter(ALL_OPS_OPENAPI, ["get*", "list*"], undefined);
+    expect(result.map((o) => o.id)).toEqual(["listPets", "getPet"]);
+  });
+
+  test("disabledTools removes matching operations by id", () => {
+    const result = applyOpFilter(ALL_OPS_OPENAPI, undefined, ["delete*"]);
+    expect(result.map((o) => o.id)).not.toContain("deletePet");
+    expect(result).toHaveLength(3);
+  });
+
+  test("allowedTools then disabledTools", () => {
+    const result = applyOpFilter(ALL_OPS_OPENAPI, ["*Pet"], ["deletePet"]);
+    expect(result.map((o) => o.id)).toEqual(["getPet", "createPet"]);
+  });
+});
+
+const ALL_OPS_GQL = [
+  { name: "me", kind: "query" },
+  { name: "publication", kind: "query" },
+  { name: "createPost", kind: "mutation" },
+  { name: "deletePost", kind: "mutation" },
+];
+
+function applyGqlFilter(ops, allowed, disabled) {
+  let result = [...ops];
+  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchGlob(p, op.name)));
+  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchGlob(p, op.name)));
+  return result;
+}
+
+describe("GraphQL operation filtering", () => {
+  test("no filter returns all operations", () => {
+    expect(applyGqlFilter(ALL_OPS_GQL, undefined, undefined)).toHaveLength(4);
+  });
+
+  test("allowedTools keeps only matching operations by name", () => {
+    const result = applyGqlFilter(ALL_OPS_GQL, ["me", "publication"], undefined);
+    expect(result.map((o) => o.name)).toEqual(["me", "publication"]);
+  });
+
+  test("disabledTools removes matching operations by name", () => {
+    const result = applyGqlFilter(ALL_OPS_GQL, undefined, ["delete*"]);
+    expect(result.map((o) => o.name)).not.toContain("deletePost");
+    expect(result).toHaveLength(3);
+  });
+
+  test("glob: allow only create* operations", () => {
+    const result = applyGqlFilter(ALL_OPS_GQL, ["create*"], undefined);
+    expect(result.map((o) => o.name)).toEqual(["createPost"]);
+  });
+});

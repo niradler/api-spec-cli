@@ -116,6 +116,31 @@ describe("spec add", () => {
     expect(entry.config.disabledTools).toEqual(["delete_*"]);
   });
 
+  test("stores allowedTools and disabledTools for OpenAPI entry", async () => {
+    await addCmd([
+      "filteredapi", "--openapi", "https://example.com/openapi.json",
+      "--allow-tool", "get*",
+      "--disable-tool", "delete*",
+    ]);
+    expect(captured.ok).toBe(true);
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = getRegistry().find((e) => e.name === "filteredapi");
+    expect(entry.config.allowedTools).toEqual(["get*"]);
+    expect(entry.config.disabledTools).toEqual(["delete*"]);
+  });
+
+  test("stores allowedTools for GraphQL entry", async () => {
+    await addCmd([
+      "filteredgql", "--graphql", "https://example.com/graphql",
+      "--allow-tool", "me",
+      "--allow-tool", "publication",
+    ]);
+    expect(captured.ok).toBe(true);
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = getRegistry().find((e) => e.name === "filteredgql");
+    expect(entry.config.allowedTools).toEqual(["me", "publication"]);
+  });
+
   test("rejects invalid spec name (path chars)", async () => {
     await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("letters, numbers");
   });

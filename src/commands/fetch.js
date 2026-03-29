@@ -60,6 +60,13 @@ fragment TypeRef on __Type {
   }
 }`;
 
+function applyFilter(items, nameFn, allowed, disabled) {
+  let result = items;
+  if (allowed?.length) result = result.filter((item) => allowed.some((p) => matchGlob(p, nameFn(item))));
+  if (disabled?.length) result = result.filter((item) => !disabled.some((p) => matchGlob(p, nameFn(item))));
+  return result;
+}
+
 /**
  * Resolve a spec from a registry entry or inline flags entry.
  * Entry shape:
@@ -69,10 +76,20 @@ fragment TypeRef on __Type {
  */
 export async function fetchSpec(entry) {
   if (entry.type === "mcp") return await loadMCPFromEntry(entry);
-  if (entry.type === "graphql") return await loadGraphQL(entry.source, entry.config?.headers);
+  if (entry.type === "graphql") {
+    const spec = await loadGraphQL(entry.source, entry.config?.headers);
+    return {
+      ...spec,
+      operations: applyFilter(spec.operations, (op) => op.name, entry.config?.allowedTools, entry.config?.disabledTools),
+    };
+  }
   // openapi — url or file; skip GraphQL probe since type is explicitly declared
   const isUrl = entry.source?.startsWith("http://") || entry.source?.startsWith("https://");
-  return isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
+  const spec = isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
+  return {
+    ...spec,
+    operations: applyFilter(spec.operations, (op) => op.id, entry.config?.allowedTools, entry.config?.disabledTools),
+  };
 }
 
 /**
@@ -80,6 +97,13 @@ export async function fetchSpec(entry) {
  * Returns null if no inline source flags present.
  */
 export function inlineEntryFromFlags(flags) {
+  const allowed = flags["allow-tool"];
+  const disabled = flags["disable-tool"];
+  const filterConfig = {
+    ...(allowed?.length ? { allowedTools: allowed } : {}),
+    ...(disabled?.length ? { disabledTools: disabled } : {}),
+  };
+
   if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
     const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
@@ -90,7 +114,7 @@ export function inlineEntryFromFlags(flags) {
       command: parts[0],
       args: parts.slice(1),
       cwd: flags.cwd,
-      config: { env: parseKV(flags.env) },
+      config: { env: parseKV(flags.env), ...filterConfig },
     };
   }
   if (flags["mcp-sse"]) {
@@ -98,7 +122,7 @@ export function inlineEntryFromFlags(flags) {
       type: "mcp",
       transport: "sse",
       url: flags["mcp-sse"],
-      config: { headers: parseKV(flags.header) },
+      config: { headers: parseKV(flags.header), ...filterConfig },
     };
   }
   if (flags["mcp-http"]) {
@@ -106,14 +130,14 @@ export function inlineEntryFromFlags(flags) {
       type: "mcp",
       transport: "streamable-http",
       url: flags["mcp-http"],
-      config: { headers: parseKV(flags.header) },
+      config: { headers: parseKV(flags.header), ...filterConfig },
     };
   }
   if (flags.graphql) {
-    return { type: "graphql", source: flags.graphql, config: { headers: parseKV(flags.header) } };
+    return { type: "graphql", source: flags.graphql, config: { headers: parseKV(flags.header), ...filterConfig } };
   }
   if (flags.openapi) {
-    return { type: "openapi", source: flags.openapi, config: { headers: parseKV(flags.header), baseUrl: flags["base-url"] || null } };
+    return { type: "openapi", source: flags.openapi, config: { headers: parseKV(flags.header), baseUrl: flags["base-url"] || null, ...filterConfig } };
   }
   return null;
 }
@@ -130,10 +154,7 @@ async function loadMCPFromEntry(entry) {
       inputSchema: t.inputSchema || null,
     }));
 
-    const allowed = entry.config?.allowedTools;
-    const disabled = entry.config?.disabledTools;
-    if (allowed?.length) mapped = mapped.filter((t) => allowed.some((p) => matchGlob(p, t.name)));
-    if (disabled?.length) mapped = mapped.filter((t) => !disabled.some((p) => matchGlob(p, t.name)));
+    mapped = applyFilter(mapped, (t) => t.name, entry.config?.allowedTools, entry.config?.disabledTools);
 
     return {
       type: "mcp",

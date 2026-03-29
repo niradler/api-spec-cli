@@ -31,8 +31,8 @@ REGISTRY (register once, use anywhere):
     Options: --description <text>  --base-url <url>  --auth <token>
              --header k=v (repeatable)  --env KEY=VAL (repeatable, stdio only)
              --cwd <path> (stdio only)
-             --allow-tool <glob> (repeatable, MCP only)
-             --disable-tool <glob> (repeatable, MCP only)
+             --allow-tool <glob> (repeatable)
+             --disable-tool <glob> (repeatable)
 
   spec specs                           List all registered specs
   spec specs --compact false           Show full entry config
