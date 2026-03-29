@@ -19,18 +19,30 @@ function ensureDir(dir) {
 }
 
 // Synchronous factory — avoids async deadlock when multiple test workers run in parallel
+const EMPTY_REGISTRY = () => ({ mcp: {}, openapi: {}, graphql: {} });
+
+function allEntriesFromRegistry(registry) {
+  const entries = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      entries.push({ ...entry, name, _section: section });
+    }
+  }
+  return entries;
+}
+
 mock.module("../src/registry.js", () => ({
   getRegistry: () => {
-    if (!existsSync(REGISTRY_FILE)) return [];
+    if (!existsSync(REGISTRY_FILE)) return EMPTY_REGISTRY();
     return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
   },
-  saveRegistry: (entries) => {
+  saveRegistry: (registry) => {
     ensureDir(testRegistryDir);
-    writeFileSync(REGISTRY_FILE, JSON.stringify(entries, null, 2));
+    writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
   },
   getEntry: (name) => {
-    const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : [];
-    const entry = registry.find((e) => e.name === name);
+    const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : EMPTY_REGISTRY();
+    const entry = allEntriesFromRegistry(registry).find((e) => e.name === name);
     if (!entry) throw new Error(`No spec named '${name}'.`);
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
     return entry;
@@ -98,7 +110,7 @@ describe("spec add", () => {
     expect(captured.ok).toBe(true);
     // Verify cwd is stored in registry
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "fs2");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "fs2");
     expect(entry.cwd).toBe("/my/project");
   });
 
@@ -111,7 +123,7 @@ describe("spec add", () => {
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filtered");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filtered");
     expect(entry.config.allowedTools).toEqual(["read_*", "list_*"]);
     expect(entry.config.disabledTools).toEqual(["delete_*"]);
   });
@@ -124,7 +136,7 @@ describe("spec add", () => {
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filteredapi");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredapi");
     expect(entry.config.allowedTools).toEqual(["get*"]);
     expect(entry.config.disabledTools).toEqual(["delete*"]);
   });
@@ -137,7 +149,7 @@ describe("spec add", () => {
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filteredgql");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredgql");
     expect(entry.config.allowedTools).toEqual(["me", "publication"]);
   });
 

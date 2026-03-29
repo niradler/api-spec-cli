@@ -13,15 +13,22 @@ export async function addCmd(args) {
   }
 
   const registry = getRegistry();
-  if (registry.find((e) => e.name === name)) {
-    throw new Error(`Spec '${name}' already exists. Run 'spec remove ${name}' first.`);
+
+  // Check for duplicate names across all sections
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    if (registry[section]?.[name]) {
+      throw new Error(`Spec '${name}' already exists. Run 'spec remove ${name}' first.`);
+    }
   }
 
-  const entry = { name, enabled: true };
+  const entry = { enabled: true };
 
   if (flags.description) entry.description = flags.description;
 
+  let section;
+
   if (flags.openapi) {
+    section = "openapi";
     entry.type = "openapi";
     entry.source = flags.openapi;
     entry.config = {
@@ -30,6 +37,7 @@ export async function addCmd(args) {
       headers: parseKV(flags.header),
     };
   } else if (flags.graphql) {
+    section = "graphql";
     entry.type = "graphql";
     entry.source = flags.graphql;
     entry.config = {
@@ -40,6 +48,7 @@ export async function addCmd(args) {
     const raw = flags["mcp-stdio"];
     const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
     if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
+    section = "mcp";
     entry.type = "mcp";
     entry.transport = "stdio";
     entry.command = parts[0];
@@ -47,6 +56,7 @@ export async function addCmd(args) {
     if (flags.cwd) entry.cwd = flags.cwd;
     entry.config = { env: parseKV(flags.env) };
   } else if (flags["mcp-sse"]) {
+    section = "mcp";
     entry.type = "mcp";
     entry.transport = "sse";
     entry.url = flags["mcp-sse"];
@@ -54,6 +64,7 @@ export async function addCmd(args) {
     if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
     entry.config = { headers };
   } else if (flags["mcp-http"]) {
+    section = "mcp";
     entry.type = "mcp";
     entry.transport = "streamable-http";
     entry.url = flags["mcp-http"];
@@ -72,7 +83,7 @@ export async function addCmd(args) {
   if (allowed?.length) entry.config.allowedTools = allowed;
   if (disabled?.length) entry.config.disabledTools = disabled;
 
-  registry.push(entry);
+  registry[section][name] = entry;
   saveRegistry(registry);
   out({ ok: true, name, type: entry.type, transport: entry.transport });
 }

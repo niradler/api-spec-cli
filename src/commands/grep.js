@@ -13,9 +13,19 @@ export async function grepCmd(args) {
     "  Plain text: substring match across name and description"
   );
 
+  function allEntries(registry) {
+    const out = [];
+    for (const section of ["mcp", "openapi", "graphql"]) {
+      for (const [name, entry] of Object.entries(registry[section] || {})) {
+        out.push({ ...entry, name, _section: section });
+      }
+    }
+    return out;
+  }
+
   const entries = flags.spec
     ? [getEntry(flags.spec)]
-    : getRegistry().filter((e) => e.enabled);
+    : allEntries(getRegistry()).filter((e) => e.enabled);
 
   if (entries.length === 0) throw new Error("No registered specs. Run 'spec add' first.");
 
