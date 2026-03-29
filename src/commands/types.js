@@ -1,10 +1,10 @@
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
-import { resolveActiveSpec } from "../resolve.js";
+import { resolveSpec } from "../resolve.js";
 
 export async function typesCmd(args) {
   const { positional, flags } = parseArgs(args);
-  const { spec } = await resolveActiveSpec(flags);
+  const { spec } = await resolveSpec(flags);
   const target = positional[0];
 
   if (spec.type === "openapi") {

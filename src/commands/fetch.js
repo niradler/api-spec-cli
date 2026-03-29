@@ -3,6 +3,7 @@ import { resolve } from "path";
 import YAML from "yaml";
 import { parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
+import { matchGlob } from "../glob.js";
 
 const INTROSPECTION_QUERY = `{
   __schema {
@@ -66,7 +67,7 @@ fragment TypeRef on __Type {
  *   { type: "graphql", source: "<url>", config: { headers, auth } }
  *   { type: "mcp", transport: "stdio|sse|streamable-http", url?, command?, args?, config: { headers, env } }
  */
-export async function resolveSpec(entry) {
+export async function fetchSpec(entry) {
   if (entry.type === "mcp") return await loadMCPFromEntry(entry);
   if (entry.type === "graphql") return await loadGraphQL(entry.source, entry.config?.headers);
   // openapi — url or file; skip GraphQL probe since type is explicitly declared
@@ -118,20 +119,6 @@ export function inlineEntryFromFlags(flags) {
 }
 
 // --- Internal loaders ---
-
-function matchGlob(pattern, str) {
-  // If no glob chars, use case-insensitive substring match
-  if (!pattern.includes("*") && !pattern.includes("?")) {
-    return str.toLowerCase().includes(pattern.toLowerCase());
-  }
-  const re = new RegExp(
-    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
-  return re.test(str);
-}
-
-export { matchGlob };
 
 async function loadMCPFromEntry(entry) {
   const client = await createMcpClient(entry);

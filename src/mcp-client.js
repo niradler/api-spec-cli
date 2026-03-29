@@ -55,7 +55,7 @@ export async function createMcpClient(spec) {
     } catch (e) {
       lastError = e;
       if (attempt < MAX_RETRIES) {
-        await new Promise((r) => setTimeout(r, RETRY_DELAY * Math.pow(2, attempt)));
+        await new Promise((r) => setTimeout(r, Math.min(RETRY_DELAY * Math.pow(2, attempt), 5000)));
       }
     }
   }

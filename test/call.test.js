@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { writeFileSync, unlinkSync } from "fs";
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -58,11 +58,12 @@ let currentSpec = mockGraphQL();
 let currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
 
 mock.module("../src/resolve.js", () => ({
-  resolveActiveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
+  resolveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
   resolveConfig: (_flags, _entry) => currentConfig,
 }));
 
 const { callOperation } = await import("../src/commands/call.js");
+
 
 describe("call - GraphQL", () => {
   test("auto-builds query from operation schema", async () => {

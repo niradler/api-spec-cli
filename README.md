@@ -56,6 +56,19 @@ Inline fetches every call, nothing cached.
 
 ## Discovery
 
+### Search across specs
+
+`grep` searches operation/tool names and descriptions across all registered specs.
+
+```bash
+spec grep search                        # Substring match across all specs
+spec grep "get*"                        # Glob: anything starting with "get"
+spec grep "*list*"                      # Glob: anything containing "list"
+spec grep search --spec agno            # Limit to one spec
+```
+
+Matches on name and description. Case-insensitive. Plain text = substring, `*`/`?` = glob.
+
 ### List all specs in the registry
 
 ```bash
@@ -131,6 +144,10 @@ spec call --spec hashnode publication --var host=blog.hashnode.dev
 spec call --spec agno search_agno --var query="how to create an agent"
 spec call --spec agno search_agno --data '{"query":"agents"}'
 
+# Read body from stdin (explicit --data -)
+echo '{"query":"agents"}' | spec call --spec agno search_agno --data -
+cat body.json | spec call --spec petstore addPet --data -
+
 # Inline (no registration)
 spec call --openapi https://petstore3.swagger.io/api/v3/openapi.json \
   getPetById --var petId=1 --base-url https://petstore3.swagger.io/api/v3
@@ -164,13 +181,23 @@ spec refresh <name>   # Force re-fetch and update cache
 ```bash
 spec add <name> --openapi <url-or-file>   [--base-url <url>] [--auth <token>] [--header k=v]
 spec add <name> --graphql <url>            [--auth <token>] [--header k=v]
-spec add <name> --mcp-http <url>           [--header k=v]
-spec add <name> --mcp-sse <url>            [--header k=v]
-spec add <name> --mcp-stdio "<cmd args>"   [--env KEY=VAL]
+spec add <name> --mcp-http <url>           [--auth <token>] [--header k=v]
+spec add <name> --mcp-sse <url>            [--auth <token>] [--header k=v]
+spec add <name> --mcp-stdio "<cmd args>"   [--env KEY=VAL] [--cwd <path>]
                                            [--description <text>]  (all types)
 ```
 
-Headers are sent on every request. For stdio MCP, use `--env` to pass environment variables to the subprocess.
+All options are repeatable where it makes sense (`--header`, `--env`). `--auth` adds `Authorization: Bearer <token>` unless the header is already set.
+
+For MCP entries, tool filtering is available:
+
+```bash
+spec add <name> --mcp-http <url> \
+  --allow-tool "read_*" --allow-tool "list_*" \
+  --disable-tool "delete_*"
+```
+
+`--allow-tool` keeps only matching tools. `--disable-tool` removes matching tools (applied after allow). Both accept glob patterns (`*`, `?`) or plain substrings.
 
 ---
 
@@ -213,6 +240,23 @@ spec list --spec petstore --format=json    # equals syntax also works
 - `types` lets you inspect one schema at a time
 - `--limit` / `--offset` paginate large APIs
 - `--filter` and `--tag` narrow results before output
+
+## MCP Options
+
+```bash
+# Retry on connection failure (useful for stdio servers that take time to start)
+MCP_MAX_RETRIES=3       # Attempts (default: 3)
+MCP_RETRY_DELAY=1000    # Base delay in ms, doubles each attempt, capped at 5s (default: 1000)
+
+# HTTP timeout for OpenAPI/GraphQL calls
+SPEC_HTTP_TIMEOUT=30000 # ms (default: 30000)
+```
+
+Stdio env vars support `${VAR}` expansion from the host environment:
+
+```bash
+spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
+```
 
 ## Storage
 

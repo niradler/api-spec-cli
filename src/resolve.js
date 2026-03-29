@@ -1,5 +1,5 @@
 import { getEntry, getCachedSpec, saveCachedSpec } from "./registry.js";
-import { resolveSpec, inlineEntryFromFlags } from "./commands/load.js";
+import { fetchSpec, inlineEntryFromFlags } from "./commands/fetch.js";
 import { getConfig } from "./store.js";
 import { parseKV } from "./args.js";
 
@@ -10,12 +10,12 @@ import { parseKV } from "./args.js";
  *   2. Inline flags   → ad-hoc, no caching
  *   3. Error          → no spec source given
  */
-export async function resolveActiveSpec(flags) {
+export async function resolveSpec(flags) {
   if (flags.spec) {
     const entry = getEntry(flags.spec);     // throws if missing or disabled
     let spec = getCachedSpec(flags.spec);
     if (!spec) {
-      spec = await resolveSpec(entry);
+      spec = await fetchSpec(entry);
       saveCachedSpec(flags.spec, spec);
     }
     return { spec, entry };
@@ -23,7 +23,7 @@ export async function resolveActiveSpec(flags) {
 
   const inlineEntry = inlineEntryFromFlags(flags);
   if (inlineEntry) {
-    const spec = await resolveSpec(inlineEntry);
+    const spec = await fetchSpec(inlineEntry);
     return { spec, entry: inlineEntry };
   }
 

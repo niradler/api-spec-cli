@@ -50,12 +50,16 @@ export async function addCmd(args) {
     entry.type = "mcp";
     entry.transport = "sse";
     entry.url = flags["mcp-sse"];
-    entry.config = { headers: parseKV(flags.header) };
+    const headers = parseKV(flags.header);
+    if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
+    entry.config = { headers };
   } else if (flags["mcp-http"]) {
     entry.type = "mcp";
     entry.transport = "streamable-http";
     entry.url = flags["mcp-http"];
-    entry.config = { headers: parseKV(flags.header) };
+    const headers = parseKV(flags.header);
+    if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
+    entry.config = { headers };
   } else {
     throw new Error(
       "Specify a source: --openapi <url>, --graphql <url>, --mcp-http <url>, --mcp-sse <url>, or --mcp-stdio \"<cmd>\""

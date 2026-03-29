@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
-import { mkdirSync, rmSync, existsSync } from "fs";
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -11,47 +11,41 @@ mock.module("../src/output.js", () => ({
 
 // Use a temp dir for the registry during tests
 const testRegistryDir = join(tmpdir(), `spec-cli-test-${process.pid}`);
+const REGISTRY_FILE = join(testRegistryDir, "registry.json");
+const CACHE_DIR = join(testRegistryDir, "cache");
 
-mock.module("../src/registry.js", async () => {
-  const { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } = await import("fs");
-  const { join } = await import("path");
+function ensureDir(dir) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
 
-  const REGISTRY_DIR = testRegistryDir;
-  const REGISTRY_FILE = join(REGISTRY_DIR, "registry.json");
-  const CACHE_DIR = join(REGISTRY_DIR, "cache");
+// Synchronous factory — avoids async deadlock when multiple test workers run in parallel
+mock.module("../src/registry.js", () => ({
+  getRegistry: () => {
+    if (!existsSync(REGISTRY_FILE)) return [];
+    return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
+  },
+  saveRegistry: (entries) => {
+    ensureDir(testRegistryDir);
+    writeFileSync(REGISTRY_FILE, JSON.stringify(entries, null, 2));
+  },
+  getEntry: (name) => {
+    const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : [];
+    const entry = registry.find((e) => e.name === name);
+    if (!entry) throw new Error(`No spec named '${name}'.`);
+    if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
+    return entry;
+  },
+  getCachedSpec: (_name) => null,
+  saveCachedSpec: (_name, _spec) => {},
+  removeCachedSpec: (name) => {
+    const file = join(CACHE_DIR, `${name}.json`);
+    if (existsSync(file)) rmSync(file);
+  },
+}));
 
-  function ensureDir(dir) {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  }
-
-  return {
-    getRegistry: () => {
-      if (!existsSync(REGISTRY_FILE)) return [];
-      return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
-    },
-    saveRegistry: (entries) => {
-      ensureDir(REGISTRY_DIR);
-      writeFileSync(REGISTRY_FILE, JSON.stringify(entries, null, 2));
-    },
-    getEntry: (name) => {
-      const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : [];
-      const entry = registry.find((e) => e.name === name);
-      if (!entry) throw new Error(`No spec named '${name}'.`);
-      if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
-      return entry;
-    },
-    getCachedSpec: (_name) => null,
-    saveCachedSpec: (_name, _spec) => {},
-    removeCachedSpec: (name) => {
-      const file = join(CACHE_DIR, `${name}.json`);
-      if (existsSync(file)) rmSync(file);
-    },
-  };
-});
-
-// Mock resolveSpec so refresh doesn't actually connect
-mock.module("../src/commands/load.js", () => ({
-  resolveSpec: async (entry) => ({
+// Mock fetchSpec so refresh doesn't actually connect
+mock.module("../src/commands/fetch.js", () => ({
+  fetchSpec: async (entry) => ({
     type: entry.type || "mcp",
     tools: [{ name: "test_tool", description: "A test tool", inputSchema: null }],
   }),
@@ -97,6 +91,37 @@ describe("spec add", () => {
     await addCmd(["fs", "--mcp-stdio", "npx -y server /tmp", "--env", "SECRET=abc"]);
     expect(captured.ok).toBe(true);
     expect(captured.transport).toBe("stdio");
+  });
+
+  test("adds a stdio MCP entry with --cwd", async () => {
+    await addCmd(["fs2", "--mcp-stdio", "npx -y server /tmp", "--cwd", "/my/project"]);
+    expect(captured.ok).toBe(true);
+    // Verify cwd is stored in registry
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = getRegistry().find((e) => e.name === "fs2");
+    expect(entry.cwd).toBe("/my/project");
+  });
+
+  test("stores allowedTools and disabledTools for MCP entry", async () => {
+    await addCmd([
+      "filtered", "--mcp-http", "https://example.com/mcp",
+      "--allow-tool", "read_*",
+      "--allow-tool", "list_*",
+      "--disable-tool", "delete_*",
+    ]);
+    expect(captured.ok).toBe(true);
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = getRegistry().find((e) => e.name === "filtered");
+    expect(entry.config.allowedTools).toEqual(["read_*", "list_*"]);
+    expect(entry.config.disabledTools).toEqual(["delete_*"]);
+  });
+
+  test("rejects invalid spec name (path chars)", async () => {
+    await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("letters, numbers");
+  });
+
+  test("rejects --mcp-stdio with empty command", async () => {
+    await expect(addCmd(["fs3", "--mcp-stdio", "   "])).rejects.toThrow("non-empty command");
   });
 
   test("rejects duplicate names", async () => {

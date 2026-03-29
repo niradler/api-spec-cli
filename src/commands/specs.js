@@ -1,6 +1,6 @@
 import { parseArgs } from "../args.js";
 import { getRegistry, saveRegistry, getEntry, removeCachedSpec, saveCachedSpec } from "../registry.js";
-import { resolveSpec } from "./load.js";
+import { fetchSpec } from "./fetch.js";
 import { out } from "../output.js";
 
 export async function specsCmd(args) {
@@ -58,7 +58,7 @@ export async function registryMutate(action, args) {
   if (action === "refresh") {
     const entry = registry[idx];
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled. Enable it first.`);
-    const spec = await resolveSpec(entry);
+    const spec = await fetchSpec(entry);
     saveCachedSpec(name, spec);
     const count = spec.tools?.length ?? spec.operations?.length ?? 0;
     out({ ok: true, refreshed: name, type: spec.type, count });

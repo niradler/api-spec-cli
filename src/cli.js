@@ -61,7 +61,7 @@ CALL:
   spec call --spec <name> <op> --query status=available  Query params
   spec call --spec <name> <op> --data '{"name":"Rex"}'   JSON body / MCP args
   spec call --spec <name> <op> --data-file args.json     Body from file
-  echo '{"query":"foo"}' | spec call --spec <name> <op>  Pipe JSON from stdin
+  spec call --spec <name> <op> --data -                  Read JSON body from stdin (pipe)
   spec call --spec <name> <op> --header X-Custom=val     Extra headers
   spec call --spec <name> <op> --method PUT              Override HTTP method
 

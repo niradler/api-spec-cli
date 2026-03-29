@@ -1,13 +1,13 @@
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
-import { resolveActiveSpec } from "../resolve.js";
+import { resolveSpec } from "../resolve.js";
 
 export async function showOperation(args) {
   const { flags, positional } = parseArgs(args);
   const target = positional[0];
   if (!target) throw new Error("Usage: spec show <operationId-or-path> [--spec <name> | --openapi <url> | ...]");
 
-  const { spec } = await resolveActiveSpec(flags);
+  const { spec } = await resolveSpec(flags);
 
   if (spec.type === "openapi") {
     showOpenAPI(spec, target);

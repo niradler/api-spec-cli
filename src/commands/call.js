@@ -2,34 +2,30 @@ import { readFileSync } from "fs";
 import { out } from "../output.js";
 import { parseArgs, parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
-import { resolveActiveSpec, resolveConfig } from "../resolve.js";
+import { resolveSpec, resolveConfig } from "../resolve.js";
+
+const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
 
 export async function callOperation(args) {
   const { flags, positional } = parseArgs(args);
   const target = positional[0];
   if (!target) throw new Error(
-    "Usage: spec call <operation> [--spec <name> | --openapi <url> | ...] [--data '{}'] [--var k=v] [--header k=v]"
+    "Usage: spec call <operation> [--spec <name> | --openapi <url> | ...] [--data '{}' | --data -] [--var k=v] [--header k=v]"
   );
 
   if (flags["data-file"] && !flags.data) {
     flags.data = readFileSync(flags["data-file"], "utf-8").trim();
   }
 
-  // Read from stdin when piped and no --data/--data-file provided.
-  // isTTY is true in a terminal, undefined when piped — so !isTTY catches piped input.
-  // Wrapped in try-catch so test runners with closed stdin don't crash.
-  if (!flags.data && !process.stdin.isTTY) {
-    try {
-      const chunks = [];
-      for await (const chunk of process.stdin) chunks.push(chunk);
-      const piped = Buffer.concat(chunks).toString("utf-8").trim();
-      if (piped) flags.data = piped;
-    } catch {
-      // stdin unavailable (test runner, closed pipe) — ignore
-    }
+  // Read from stdin only when --data - is explicitly passed.
+  // Agents run in non-TTY environments — auto-detecting stdin would add latency on every call.
+  if (flags.data === "-") {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    flags.data = Buffer.concat(chunks).toString("utf-8").trim();
   }
 
-  const { spec, entry } = await resolveActiveSpec(flags);
+  const { spec, entry } = await resolveSpec(flags);
   const config = resolveConfig(flags, entry);
 
   if (spec.type === "openapi") {
@@ -60,7 +56,10 @@ async function callMCP(spec, entry, target, flags) {
   const client = await createMcpClient(entry);
   try {
     const result = await client.callTool({ name: tool.name, arguments: toolArgs });
-    out({ tool: tool.name, arguments: toolArgs, result });
+    // Normalize MCP result: expose isError and content at the top level
+    const isError = result.isError === true;
+    out({ tool: tool.name, arguments: toolArgs, isError, content: result.content, result });
+    if (isError) process.exit(1);
   } finally {
     await client.close();
   }
@@ -82,7 +81,13 @@ async function callOpenAPI(spec, config, target, flags) {
 
   const vars = parseKV(flags.var);
   for (const [key, val] of Object.entries(vars)) {
-    path = path.replace(`{${key}}`, encodeURIComponent(val));
+    path = path.replaceAll(`{${key}}`, encodeURIComponent(val));
+  }
+
+  // Detect unreplaced path parameters and error clearly
+  const missing = [...path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required path parameters: ${missing.join(", ")}. Pass --var ${missing[0]}=<value>`);
   }
 
   const queryParams = parseKV(flags.query);
@@ -98,7 +103,7 @@ async function callOpenAPI(spec, config, target, flags) {
     if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(url, { method, headers, body });
+  const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(HTTP_TIMEOUT) });
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
@@ -146,15 +151,16 @@ async function callGraphQL(spec, config, target, flags) {
     variables: Object.keys(variables).length > 0 ? variables : undefined,
   });
 
-  const res = await fetch(endpoint, { method: "POST", headers, body });
-  const responseBody = await res.json();
+  const res = await fetch(endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(HTTP_TIMEOUT) });
+  const contentType = res.headers.get("content-type") || "";
+  const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
   out({
     status: res.status,
     query,
     variables: Object.keys(variables).length > 0 ? variables : undefined,
-    data: responseBody.data || null,
-    errors: responseBody.errors || null,
+    data: responseBody?.data || null,
+    errors: responseBody?.errors || null,
   });
 }
 

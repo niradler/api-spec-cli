@@ -1,7 +1,8 @@
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
 import { getRegistry, getEntry, getCachedSpec, saveCachedSpec } from "../registry.js";
-import { resolveSpec, matchGlob } from "./load.js";
+import { fetchSpec } from "./fetch.js";
+import { matchGlob } from "../glob.js";
 
 export async function grepCmd(args) {
   const { flags, positional } = parseArgs(args);
@@ -23,7 +24,7 @@ export async function grepCmd(args) {
   for (const entry of entries) {
     let spec = getCachedSpec(entry.name);
     if (!spec) {
-      spec = await resolveSpec(entry);
+      spec = await fetchSpec(entry);
       saveCachedSpec(entry.name, spec);
     }
 

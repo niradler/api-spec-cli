@@ -54,7 +54,7 @@ function mockMCP() {
 let currentSpec = mockOpenAPI();
 
 mock.module("../src/resolve.js", () => ({
-  resolveActiveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
+  resolveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
   resolveConfig: (_flags, _entry) => ({ baseUrl: null, headers: {}, auth: null }),
 }));
 
