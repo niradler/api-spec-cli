@@ -3,7 +3,7 @@ import { resolve } from "path";
 import YAML from "yaml";
 import { parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
-import { matchGlob } from "../glob.js";
+import { matchFilter } from "../glob.js";
 
 const INTROSPECTION_QUERY = `{
   __schema {
@@ -62,8 +62,8 @@ fragment TypeRef on __Type {
 
 function applyFilter(items, nameFn, allowed, disabled) {
   let result = items;
-  if (allowed?.length) result = result.filter((item) => allowed.some((p) => matchGlob(p, nameFn(item))));
-  if (disabled?.length) result = result.filter((item) => !disabled.some((p) => matchGlob(p, nameFn(item))));
+  if (allowed?.length) result = result.filter((item) => allowed.some((p) => matchFilter(p, nameFn(item))));
+  if (disabled?.length) result = result.filter((item) => !disabled.some((p) => matchFilter(p, nameFn(item))));
   return result;
 }
 

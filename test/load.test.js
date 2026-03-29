@@ -9,16 +9,16 @@ mock.module("../src/mcp-client.js", () => ({
   }),
 }));
 
-const { matchGlob } = await import("../src/glob.js");
+const { matchGlob, matchFilter } = await import("../src/glob.js");
 
-// Simulate the filtering logic from loadMCPFromEntry (pure, no I/O)
+// Simulate the filtering logic from applyFilter (uses matchFilter — exact or glob)
 function applyToolFilter(tools, allowedTools, disabledTools) {
   let result = [...tools];
   if (allowedTools?.length) {
-    result = result.filter((t) => allowedTools.some((p) => matchGlob(p, t.name)));
+    result = result.filter((t) => allowedTools.some((p) => matchFilter(p, t.name)));
   }
   if (disabledTools?.length) {
-    result = result.filter((t) => !disabledTools.some((p) => matchGlob(p, t.name)));
+    result = result.filter((t) => !disabledTools.some((p) => matchFilter(p, t.name)));
   }
   return result;
 }
@@ -54,6 +54,32 @@ describe("matchGlob", () => {
 
   test("* wildcard matches everything", () => {
     expect(matchGlob("*", "anything")).toBe(true);
+  });
+});
+
+describe("matchFilter", () => {
+  test("plain text = exact match (not substring)", () => {
+    expect(matchFilter("me", "me")).toBe(true);
+    expect(matchFilter("me", "topCommenters")).toBe(false); // would pass matchGlob
+    expect(matchFilter("ME", "me")).toBe(true);             // case-insensitive
+    expect(matchFilter("getPet", "getPetById")).toBe(false);
+  });
+
+  test("* glob matches any sequence", () => {
+    expect(matchFilter("get*", "getPetById")).toBe(true);
+    expect(matchFilter("get*", "listPets")).toBe(false);
+    expect(matchFilter("*post*", "createPost")).toBe(true); // explicit substring via glob
+    expect(matchFilter("*post*", "deletePost")).toBe(true);
+    expect(matchFilter("*post*", "getPet")).toBe(false);
+  });
+
+  test("? glob matches single character", () => {
+    expect(matchFilter("getPe?", "getPet")).toBe(true);
+    expect(matchFilter("getPe?", "getPets")).toBe(false);
+  });
+
+  test("* matches everything", () => {
+    expect(matchFilter("*", "anything")).toBe(true);
   });
 });
 
@@ -100,8 +126,8 @@ const ALL_OPS_OPENAPI = [
 
 function applyOpFilter(ops, allowed, disabled) {
   let result = [...ops];
-  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchGlob(p, op.id)));
-  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchGlob(p, op.id)));
+  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchFilter(p, op.id)));
+  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.id)));
   return result;
 }
 
@@ -136,8 +162,8 @@ const ALL_OPS_GQL = [
 
 function applyGqlFilter(ops, allowed, disabled) {
   let result = [...ops];
-  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchGlob(p, op.name)));
-  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchGlob(p, op.name)));
+  if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchFilter(p, op.name)));
+  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.name)));
   return result;
 }
 
