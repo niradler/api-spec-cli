@@ -14,76 +14,101 @@ export async function addCmd(args) {
 
   const registry = getRegistry();
 
-  // Check for duplicate names across all sections
+  // Check for name collision across all sections
   for (const section of ["mcp", "openapi", "graphql"]) {
     if (registry[section]?.[name]) {
       throw new Error(`Spec '${name}' already exists. Run 'spec remove ${name}' first.`);
     }
   }
 
-  const entry = { enabled: true };
+  const allowed = flags["allow-tool"];
+  const disabled = flags["disable-tool"];
+  const filterConfig = {
+    ...(allowed?.length ? { allowedTools: allowed } : {}),
+    ...(disabled?.length ? { disabledTools: disabled } : {}),
+  };
+  const base = {
+    enabled: true,
+    ...(flags.description ? { description: flags.description } : {}),
+  };
 
-  if (flags.description) entry.description = flags.description;
-
-  let section;
+  let section, entry;
 
   if (flags.openapi) {
     section = "openapi";
-    entry.type = "openapi";
-    entry.source = flags.openapi;
-    entry.config = {
-      baseUrl: flags["base-url"] || null,
-      auth: flags.auth || null,
-      headers: parseKV(flags.header),
+    entry = {
+      ...base,
+      type: "openapi",
+      source: flags.openapi,
+      config: {
+        baseUrl: flags["base-url"] || null,
+        auth: flags.auth || null,
+        headers: parseKV(flags.header),
+        ...filterConfig,
+      },
     };
   } else if (flags.graphql) {
     section = "graphql";
-    entry.type = "graphql";
-    entry.source = flags.graphql;
-    entry.config = {
-      auth: flags.auth || null,
-      headers: parseKV(flags.header),
+    entry = {
+      ...base,
+      type: "graphql",
+      source: flags.graphql,
+      config: {
+        auth: flags.auth || null,
+        headers: parseKV(flags.header),
+        ...filterConfig,
+      },
     };
   } else if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
     const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
     if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
     section = "mcp";
-    entry.type = "mcp";
-    entry.transport = "stdio";
-    entry.command = parts[0];
-    entry.args = parts.slice(1);
-    if (flags.cwd) entry.cwd = flags.cwd;
-    entry.config = { env: parseKV(flags.env) };
+    const env = parseKV(flags.env);
+    entry = {
+      ...base,
+      ...filterConfig,
+      type: "stdio",
+      command: parts[0],
+      args: parts.slice(1),
+      ...(flags.cwd ? { cwd: flags.cwd } : {}),
+      ...(Object.keys(env).length ? { env } : {}),
+    };
   } else if (flags["mcp-sse"]) {
     section = "mcp";
-    entry.type = "mcp";
-    entry.transport = "sse";
-    entry.url = flags["mcp-sse"];
     const headers = parseKV(flags.header);
     if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
-    entry.config = { headers };
+    entry = {
+      ...base,
+      ...filterConfig,
+      type: "sse",
+      url: flags["mcp-sse"],
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
+      ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
+      ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
+    };
   } else if (flags["mcp-http"]) {
     section = "mcp";
-    entry.type = "mcp";
-    entry.transport = "streamable-http";
-    entry.url = flags["mcp-http"];
     const headers = parseKV(flags.header);
     if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
-    entry.config = { headers };
+    entry = {
+      ...base,
+      ...filterConfig,
+      type: "http",
+      url: flags["mcp-http"],
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
+      ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
+      ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
+    };
   } else {
     throw new Error(
       "Specify a source: --openapi <url>, --graphql <url>, --mcp-http <url>, --mcp-sse <url>, or --mcp-stdio \"<cmd>\""
     );
   }
 
-  // Operation filtering (all types)
-  const allowed = flags["allow-tool"];
-  const disabled = flags["disable-tool"];
-  if (allowed?.length) entry.config.allowedTools = allowed;
-  if (disabled?.length) entry.config.disabledTools = disabled;
-
   registry[section][name] = entry;
   saveRegistry(registry);
-  out({ ok: true, name, type: entry.type, transport: entry.transport });
+  out({ ok: true, name, section, type: entry.type });
 }

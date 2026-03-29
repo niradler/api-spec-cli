@@ -82,8 +82,8 @@ describe("spec add", () => {
     await addCmd(["myapi", "--mcp-http", "https://example.com/mcp", "--description", "Test API"]);
     expect(captured.ok).toBe(true);
     expect(captured.name).toBe("myapi");
-    expect(captured.type).toBe("mcp");
-    expect(captured.transport).toBe("streamable-http");
+    expect(captured.section).toBe("mcp");
+    expect(captured.type).toBe("http");
   });
 
   test("adds an OpenAPI entry", async () => {
@@ -102,7 +102,7 @@ describe("spec add", () => {
   test("adds a stdio MCP entry with env vars", async () => {
     await addCmd(["fs", "--mcp-stdio", "npx -y server /tmp", "--env", "SECRET=abc"]);
     expect(captured.ok).toBe(true);
-    expect(captured.transport).toBe("stdio");
+    expect(captured.type).toBe("stdio");
   });
 
   test("adds a stdio MCP entry with --cwd", async () => {
@@ -124,8 +124,8 @@ describe("spec add", () => {
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filtered");
-    expect(entry.config.allowedTools).toEqual(["read_*", "list_*"]);
-    expect(entry.config.disabledTools).toEqual(["delete_*"]);
+    expect(entry.allowedTools).toEqual(["read_*", "list_*"]);
+    expect(entry.disabledTools).toEqual(["delete_*"]);
   });
 
   test("stores allowedTools and disabledTools for OpenAPI entry", async () => {
@@ -187,7 +187,7 @@ describe("spec specs", () => {
     await specsCmd([]);
     expect(captured.specs).toHaveLength(2);
     expect(captured.specs[0].name).toBe("agno");
-    expect(captured.specs[0].type).toBe("mcp");
+    expect(captured.specs[0].type).toBe("http");
     expect(captured.specs[0].enabled).toBe(true);
     // compact: no config, no source
     expect(captured.specs[0].config).toBeUndefined();
@@ -195,8 +195,9 @@ describe("spec specs", () => {
 
   test("--compact false shows full entries", async () => {
     await specsCmd(["--compact", "false"]);
-    expect(captured.specs[0].config).toBeDefined();
+    expect(captured.specs[0].url).toBe("https://docs.agno.com/mcp");
     expect(captured.specs[1].source).toBe("https://petstore.com/openapi.json");
+    expect(captured.specs[1].config).toBeDefined();
   });
 });
 
