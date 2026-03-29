@@ -189,15 +189,30 @@ spec add <name> --mcp-stdio "<cmd args>"   [--env KEY=VAL] [--cwd <path>]
 
 All options are repeatable where it makes sense (`--header`, `--env`). `--auth` adds `Authorization: Bearer <token>` unless the header is already set.
 
-For MCP entries, tool filtering is available:
+Operation filtering works for all spec types — MCP, OpenAPI, and GraphQL:
 
 ```bash
+# MCP: allow only read/list tools
 spec add <name> --mcp-http <url> \
   --allow-tool "read_*" --allow-tool "list_*" \
   --disable-tool "delete_*"
+
+# OpenAPI: allow only GET operations (by operationId)
+spec add <name> --openapi <url> \
+  --allow-tool "get*" --allow-tool "find*"
+
+# GraphQL: allow specific operations by exact name
+spec add <name> --graphql <url> \
+  --allow-tool "me" --allow-tool "publication"
 ```
 
-`--allow-tool` keeps only matching tools. `--disable-tool` removes matching tools (applied after allow). Both accept glob patterns (`*`, `?`) or plain substrings.
+`--allow-tool` keeps only matching operations. `--disable-tool` removes matching operations (applied after allow). Both are repeatable.
+
+**Matching rules:**
+- Plain text → **exact match** (case-insensitive): `"me"` matches only `me`
+- Glob patterns → anchored match: `"get*"` matches `getPetById`, `"*post*"` matches `createPost`
+
+Use `grep` for search (substring) — `--allow-tool` / `--disable-tool` for precise whitelists (exact or glob).
 
 ---
 
