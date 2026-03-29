@@ -4,6 +4,16 @@ import { getRegistry, getEntry, getCachedSpec, saveCachedSpec } from "../registr
 import { fetchSpec } from "./fetch.js";
 import { matchGlob } from "../glob.js";
 
+function allEntries(registry) {
+  const entries = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      entries.push({ ...entry, name, _section: section });
+    }
+  }
+  return entries;
+}
+
 export async function grepCmd(args) {
   const { flags, positional } = parseArgs(args);
   const pattern = positional[0];
@@ -12,16 +22,6 @@ export async function grepCmd(args) {
     "  Glob patterns: * matches anything, ? matches one char\n" +
     "  Plain text: substring match across name and description"
   );
-
-  function allEntries(registry) {
-    const out = [];
-    for (const section of ["mcp", "openapi", "graphql"]) {
-      for (const [name, entry] of Object.entries(registry[section] || {})) {
-        out.push({ ...entry, name, _section: section });
-      }
-    }
-    return out;
-  }
 
   const entries = flags.spec
     ? [getEntry(flags.spec)]
