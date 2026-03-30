@@ -2,8 +2,12 @@ import { describe, test, expect, beforeEach, mock } from "bun:test";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 // Registry mock with in-memory entries + cache
@@ -31,7 +35,9 @@ mock.module("../src/registry.js", () => ({
     return e;
   },
   getCachedSpec: (name) => specCache[name] || null,
-  saveCachedSpec: (name, spec) => { specCache[name] = spec; },
+  saveCachedSpec: (name, spec) => {
+    specCache[name] = spec;
+  },
   removeCachedSpec: () => {},
 }));
 

@@ -62,8 +62,10 @@ fragment TypeRef on __Type {
 
 function applyFilter(items, nameFn, allowed, disabled) {
   let result = items;
-  if (allowed?.length) result = result.filter((item) => allowed.some((p) => matchFilter(p, nameFn(item))));
-  if (disabled?.length) result = result.filter((item) => !disabled.some((p) => matchFilter(p, nameFn(item))));
+  if (allowed?.length)
+    result = result.filter((item) => allowed.some((p) => matchFilter(p, nameFn(item))));
+  if (disabled?.length)
+    result = result.filter((item) => !disabled.some((p) => matchFilter(p, nameFn(item))));
   return result;
 }
 
@@ -80,7 +82,12 @@ export async function fetchSpec(entry) {
     const spec = await loadGraphQL(entry.source, entry.config?.headers);
     return {
       ...spec,
-      operations: applyFilter(spec.operations, (op) => op.name, entry.config?.allowedTools, entry.config?.disabledTools),
+      operations: applyFilter(
+        spec.operations,
+        (op) => op.name,
+        entry.config?.allowedTools,
+        entry.config?.disabledTools
+      ),
     };
   }
   // openapi
@@ -88,7 +95,12 @@ export async function fetchSpec(entry) {
   const spec = isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
   return {
     ...spec,
-    operations: applyFilter(spec.operations, (op) => op.id, entry.config?.allowedTools, entry.config?.disabledTools),
+    operations: applyFilter(
+      spec.operations,
+      (op) => op.id,
+      entry.config?.allowedTools,
+      entry.config?.disabledTools
+    ),
   };
 }
 
@@ -106,7 +118,9 @@ export function inlineEntryFromFlags(flags) {
 
   if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
-    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
+    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) =>
+      p.replace(/^"|"$/g, "")
+    );
     if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
     return {
       _section: "mcp",
@@ -141,10 +155,24 @@ export function inlineEntryFromFlags(flags) {
     };
   }
   if (flags.graphql) {
-    return { _section: "graphql", type: "graphql", source: flags.graphql, config: { headers: parseKV(flags.header), ...filterConfig } };
+    return {
+      _section: "graphql",
+      type: "graphql",
+      source: flags.graphql,
+      config: { headers: parseKV(flags.header), ...filterConfig },
+    };
   }
   if (flags.openapi) {
-    return { _section: "openapi", type: "openapi", source: flags.openapi, config: { headers: parseKV(flags.header), baseUrl: flags["base-url"] || null, ...filterConfig } };
+    return {
+      _section: "openapi",
+      type: "openapi",
+      source: flags.openapi,
+      config: {
+        headers: parseKV(flags.header),
+        baseUrl: flags["base-url"] || null,
+        ...filterConfig,
+      },
+    };
   }
   return null;
 }
@@ -181,9 +209,7 @@ async function loadMCPFromEntry(entry) {
 async function loadFromUrl(url, skipGraphQLProbe = false) {
   const lowerUrl = url.toLowerCase();
   const isLikelyFile =
-    lowerUrl.endsWith(".json") ||
-    lowerUrl.endsWith(".yaml") ||
-    lowerUrl.endsWith(".yml");
+    lowerUrl.endsWith(".json") || lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml");
 
   if (!isLikelyFile && !skipGraphQLProbe) {
     try {
@@ -294,7 +320,11 @@ function parseOpenAPI(text, source) {
     version,
     title: doc.info?.title || null,
     description: doc.info?.description || null,
-    servers: doc.servers || (doc.host ? [{ url: `${doc.schemes?.[0] || "https"}://${doc.host}${doc.basePath || ""}` }] : []),
+    servers:
+      doc.servers ||
+      (doc.host
+        ? [{ url: `${doc.schemes?.[0] || "https"}://${doc.host}${doc.basePath || ""}` }]
+        : []),
     operations,
     components: doc.components || doc.definitions || {},
     raw: doc,

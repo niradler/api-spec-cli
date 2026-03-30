@@ -5,7 +5,10 @@ import { resolveSpec } from "../resolve.js";
 export async function showOperation(args) {
   const { flags, positional } = parseArgs(args);
   const target = positional[0];
-  if (!target) throw new Error("Usage: spec show <operationId-or-path> [--spec <name> | --openapi <url> | ...]");
+  if (!target)
+    throw new Error(
+      "Usage: spec show <operationId-or-path> [--spec <name> | --openapi <url> | ...]"
+    );
 
   const { spec } = await resolveSpec(flags);
 
@@ -21,10 +24,11 @@ export async function showOperation(args) {
 function showOpenAPI(spec, target) {
   const lower = target.toLowerCase();
 
-  const op = spec.operations.find((o) =>
-    o.id.toLowerCase() === lower ||
-    o.path.toLowerCase() === lower ||
-    `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
+  const op = spec.operations.find(
+    (o) =>
+      o.id.toLowerCase() === lower ||
+      o.path.toLowerCase() === lower ||
+      `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
   );
 
   if (!op) {
@@ -195,8 +199,13 @@ function findRelatedTypes(op, types) {
     .filter((t) => names.has(t.name) && !scalars.has(t.name))
     .map((t) => {
       const result = { name: t.name, kind: t.kind };
-      if (t.fields) result.fields = t.fields.map((f) => ({ name: f.name, type: flattenType(f.type) }));
-      if (t.inputFields) result.inputFields = t.inputFields.map((f) => ({ name: f.name, type: flattenType(f.type) }));
+      if (t.fields)
+        result.fields = t.fields.map((f) => ({ name: f.name, type: flattenType(f.type) }));
+      if (t.inputFields)
+        result.inputFields = t.inputFields.map((f) => ({
+          name: f.name,
+          type: flattenType(f.type),
+        }));
       if (t.enumValues) result.enumValues = t.enumValues.map((e) => e.name);
       return result;
     });

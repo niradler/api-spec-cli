@@ -5,8 +5,12 @@ import { tmpdir } from "os";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 // Use a temp dir for the registry during tests
@@ -42,7 +46,9 @@ mock.module("../src/registry.js", () => ({
   },
   allEntries: (registry) => allEntriesFromRegistry(registry),
   getEntry: (name) => {
-    const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : EMPTY_REGISTRY();
+    const registry = existsSync(REGISTRY_FILE)
+      ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"))
+      : EMPTY_REGISTRY();
     const entry = allEntriesFromRegistry(registry).find((e) => e.name === name);
     if (!entry) throw new Error(`No spec named '${name}'.`);
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
@@ -88,7 +94,13 @@ describe("spec add", () => {
   });
 
   test("adds an OpenAPI entry", async () => {
-    await addCmd(["pets", "--openapi", "https://petstore.com/openapi.json", "--base-url", "https://petstore.com/api"]);
+    await addCmd([
+      "pets",
+      "--openapi",
+      "https://petstore.com/openapi.json",
+      "--base-url",
+      "https://petstore.com/api",
+    ]);
     expect(captured.ok).toBe(true);
     expect(captured.name).toBe("pets");
     expect(captured.type).toBe("openapi");
@@ -117,10 +129,15 @@ describe("spec add", () => {
 
   test("stores allowedTools and disabledTools for MCP entry", async () => {
     await addCmd([
-      "filtered", "--mcp-http", "https://example.com/mcp",
-      "--allow-tool", "read_*",
-      "--allow-tool", "list_*",
-      "--disable-tool", "delete_*",
+      "filtered",
+      "--mcp-http",
+      "https://example.com/mcp",
+      "--allow-tool",
+      "read_*",
+      "--allow-tool",
+      "list_*",
+      "--disable-tool",
+      "delete_*",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
@@ -131,9 +148,13 @@ describe("spec add", () => {
 
   test("stores allowedTools and disabledTools for OpenAPI entry", async () => {
     await addCmd([
-      "filteredapi", "--openapi", "https://example.com/openapi.json",
-      "--allow-tool", "get*",
-      "--disable-tool", "delete*",
+      "filteredapi",
+      "--openapi",
+      "https://example.com/openapi.json",
+      "--allow-tool",
+      "get*",
+      "--disable-tool",
+      "delete*",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
@@ -144,9 +165,13 @@ describe("spec add", () => {
 
   test("stores allowedTools for GraphQL entry", async () => {
     await addCmd([
-      "filteredgql", "--graphql", "https://example.com/graphql",
-      "--allow-tool", "me",
-      "--allow-tool", "publication",
+      "filteredgql",
+      "--graphql",
+      "https://example.com/graphql",
+      "--allow-tool",
+      "me",
+      "--allow-tool",
+      "publication",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
@@ -155,7 +180,9 @@ describe("spec add", () => {
   });
 
   test("rejects invalid spec name (path chars)", async () => {
-    await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("letters, numbers");
+    await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow(
+      "letters, numbers"
+    );
   });
 
   test("rejects --mcp-stdio with empty command", async () => {
@@ -165,11 +192,15 @@ describe("spec add", () => {
   test("rejects duplicate names", async () => {
     await addCmd(["myapi", "--mcp-http", "https://example.com/mcp"]);
     captured = null;
-    await expect(addCmd(["myapi", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("already exists");
+    await expect(addCmd(["myapi", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow(
+      "already exists"
+    );
   });
 
   test("rejects missing source flag", async () => {
-    await expect(addCmd(["myapi", "--description", "no source"])).rejects.toThrow("Specify a source");
+    await expect(addCmd(["myapi", "--description", "no source"])).rejects.toThrow(
+      "Specify a source"
+    );
   });
 
   test("rejects missing name", async () => {

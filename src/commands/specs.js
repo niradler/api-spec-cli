@@ -1,5 +1,12 @@
 import { parseArgs } from "../args.js";
-import { getRegistry, saveRegistry, getEntry, removeCachedSpec, saveCachedSpec, allEntries } from "../registry.js";
+import {
+  getRegistry,
+  saveRegistry,
+  getEntry,
+  removeCachedSpec,
+  saveCachedSpec,
+  allEntries,
+} from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { out } from "../output.js";
 

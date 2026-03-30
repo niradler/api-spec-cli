@@ -5,8 +5,12 @@ import { tmpdir } from "os";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 const testDir = join(tmpdir(), `spec-cli-test-auth-${process.pid}`);
@@ -34,7 +38,10 @@ function readReg() {
 
 mock.module("../src/registry.js", () => ({
   getRegistry: () => readReg(),
-  saveRegistry: (reg) => { mkdirSync(testDir, { recursive: true }); writeFileSync(REGISTRY_FILE, JSON.stringify(reg, null, 2)); },
+  saveRegistry: (reg) => {
+    mkdirSync(testDir, { recursive: true });
+    writeFileSync(REGISTRY_FILE, JSON.stringify(reg, null, 2));
+  },
   allEntries: (registry) => allEntriesFromReg(registry),
   getEntry: (name) => {
     const reg = readReg();
@@ -72,7 +79,11 @@ afterEach(() => {
 
 describe("spec auth", () => {
   test("--revoke clears token file and returns revoked:true", async () => {
-    writeRegistry({ mcp: { myapi: { type: "http", url: "https://example.com/mcp", enabled: true } }, openapi: {}, graphql: {} });
+    writeRegistry({
+      mcp: { myapi: { type: "http", url: "https://example.com/mcp", enabled: true } },
+      openapi: {},
+      graphql: {},
+    });
     saveTokenFile("myapi", { tokens: { access_token: "tok" }, clientSecret: "sec" });
     await authCmd(["myapi", "--revoke"]);
     expect(captured).toEqual({ ok: true, name: "myapi", revoked: true });
@@ -81,12 +92,24 @@ describe("spec auth", () => {
   });
 
   test("throws for non-mcp entry", async () => {
-    writeRegistry({ mcp: {}, openapi: { pets: { type: "openapi", source: "https://example.com/spec.json", enabled: true } }, graphql: {} });
-    await expect(authCmd(["pets"])).rejects.toThrow("OAuth only applies to mcp http and sse entries");
+    writeRegistry({
+      mcp: {},
+      openapi: {
+        pets: { type: "openapi", source: "https://example.com/spec.json", enabled: true },
+      },
+      graphql: {},
+    });
+    await expect(authCmd(["pets"])).rejects.toThrow(
+      "OAuth only applies to mcp http and sse entries"
+    );
   });
 
   test("throws for mcp stdio entry", async () => {
-    writeRegistry({ mcp: { fs: { type: "stdio", command: "npx", args: [], enabled: true } }, openapi: {}, graphql: {} });
+    writeRegistry({
+      mcp: { fs: { type: "stdio", command: "npx", args: [], enabled: true } },
+      openapi: {},
+      graphql: {},
+    });
     await expect(authCmd(["fs"])).rejects.toThrow("OAuth only applies to mcp http and sse entries");
   });
 
@@ -99,7 +122,11 @@ describe("spec auth", () => {
   });
 
   test("re-auth preserves clientSecret", async () => {
-    writeRegistry({ mcp: { myapi: { type: "http", url: "https://example.com/mcp", enabled: true } }, openapi: {}, graphql: {} });
+    writeRegistry({
+      mcp: { myapi: { type: "http", url: "https://example.com/mcp", enabled: true } },
+      openapi: {},
+      graphql: {},
+    });
     saveTokenFile("myapi", { tokens: { access_token: "old" }, clientSecret: "mysecret" });
     await authCmd(["myapi"]);
     expect(captured.ok).toBe(true);
@@ -108,7 +135,11 @@ describe("spec auth", () => {
   });
 
   test("successful auth returns flow from runOAuthFlow", async () => {
-    writeRegistry({ mcp: { myapi: { type: "sse", url: "https://example.com/mcp", enabled: true } }, openapi: {}, graphql: {} });
+    writeRegistry({
+      mcp: { myapi: { type: "sse", url: "https://example.com/mcp", enabled: true } },
+      openapi: {},
+      graphql: {},
+    });
     await authCmd(["myapi"]);
     expect(captured).toEqual({ ok: true, name: "myapi", flow: "browser" });
   });

@@ -12,7 +12,9 @@ export async function authCmd(args) {
   const entry = getEntry(name);
 
   if (entry._section !== "mcp" || (entry.type !== "http" && entry.type !== "sse")) {
-    throw new Error(`'${name}' is not an HTTP/SSE MCP spec — OAuth only applies to mcp http and sse entries`);
+    throw new Error(
+      `'${name}' is not an HTTP/SSE MCP spec — OAuth only applies to mcp http and sse entries`
+    );
   }
 
   if ("revoke" in flags) {

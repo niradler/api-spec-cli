@@ -9,9 +9,10 @@ const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
 export async function callOperation(args) {
   const { flags, positional } = parseArgs(args);
   const target = positional[0];
-  if (!target) throw new Error(
-    "Usage: spec call <operation> [--spec <name> | --openapi <url> | ...] [--data '{}' | --data -] [--var k=v] [--header k=v]"
-  );
+  if (!target)
+    throw new Error(
+      "Usage: spec call <operation> [--spec <name> | --openapi <url> | ...] [--data '{}' | --data -] [--var k=v] [--header k=v]"
+    );
 
   if (flags["data-file"] && !flags.data) {
     flags.data = readFileSync(flags["data-file"], "utf-8").trim();
@@ -68,10 +69,11 @@ async function callMCP(spec, entry, target, flags) {
 async function callOpenAPI(spec, config, target, flags) {
   const lower = target.toLowerCase();
 
-  const op = spec.operations.find((o) =>
-    o.id.toLowerCase() === lower ||
-    o.path.toLowerCase() === lower ||
-    `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
+  const op = spec.operations.find(
+    (o) =>
+      o.id.toLowerCase() === lower ||
+      o.path.toLowerCase() === lower ||
+      `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
   );
 
   if (!op) throw new Error(`Operation not found: ${target}`);
@@ -87,7 +89,9 @@ async function callOpenAPI(spec, config, target, flags) {
   // Detect unreplaced path parameters and error clearly
   const missing = [...path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
   if (missing.length > 0) {
-    throw new Error(`Missing required path parameters: ${missing.join(", ")}. Pass --var ${missing[0]}=<value>`);
+    throw new Error(
+      `Missing required path parameters: ${missing.join(", ")}. Pass --var ${missing[0]}=<value>`
+    );
   }
 
   const queryParams = parseKV(flags.query);
@@ -103,7 +107,12 @@ async function callOpenAPI(spec, config, target, flags) {
     if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(HTTP_TIMEOUT) });
+  const res = await fetch(url, {
+    method,
+    headers,
+    body,
+    signal: AbortSignal.timeout(HTTP_TIMEOUT),
+  });
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
@@ -122,7 +131,8 @@ async function callGraphQL(spec, config, target, flags) {
   if (!op) throw new Error(`Operation not found: ${target}`);
 
   const endpoint = config.baseUrl || spec.endpoint;
-  if (!endpoint) throw new Error("No GraphQL endpoint. Set --base-url or register with --graphql <url>.");
+  if (!endpoint)
+    throw new Error("No GraphQL endpoint. Set --base-url or register with --graphql <url>.");
 
   let query;
   let dataVariables;
@@ -151,7 +161,12 @@ async function callGraphQL(spec, config, target, flags) {
     variables: Object.keys(variables).length > 0 ? variables : undefined,
   });
 
-  const res = await fetch(endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(HTTP_TIMEOUT) });
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body,
+    signal: AbortSignal.timeout(HTTP_TIMEOUT),
+  });
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
@@ -166,12 +181,10 @@ async function callGraphQL(spec, config, target, flags) {
 
 function buildGraphQLQuery(op, types) {
   const args = op.args || [];
-  const argsStr = args.length > 0
-    ? `(${args.map((a) => `$${a.name}: ${flattenType(a.type)}`).join(", ")})`
-    : "";
-  const passArgs = args.length > 0
-    ? `(${args.map((a) => `${a.name}: $${a.name}`).join(", ")})`
-    : "";
+  const argsStr =
+    args.length > 0 ? `(${args.map((a) => `$${a.name}: ${flattenType(a.type)}`).join(", ")})` : "";
+  const passArgs =
+    args.length > 0 ? `(${args.map((a) => `${a.name}: $${a.name}`).join(", ")})` : "";
 
   const returnTypeName = op.returnType?.replace(/[[\]!]/g, "");
   const returnType = types?.find((t) => t.name === returnTypeName);

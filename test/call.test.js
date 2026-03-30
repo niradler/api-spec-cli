@@ -5,8 +5,12 @@ import { resolve } from "path";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 const fixturesDir = resolve(import.meta.dir, "fixtures");
@@ -21,14 +25,16 @@ function mockOpenAPISpec() {
     type: "openapi",
     servers: raw.servers,
     operations: Object.entries(raw.paths).flatMap(([path, methods]) =>
-      Object.entries(methods).filter(([m]) => !m.startsWith("x-")).map(([method, op]) => ({
-        id: op.operationId,
-        method: method.toUpperCase(),
-        path,
-        parameters: op.parameters || [],
-        requestBody: op.requestBody || null,
-        responses: op.responses || {},
-      }))
+      Object.entries(methods)
+        .filter(([m]) => !m.startsWith("x-"))
+        .map(([method, op]) => ({
+          id: op.operationId,
+          method: method.toUpperCase(),
+          path,
+          parameters: op.parameters || [],
+          requestBody: op.requestBody || null,
+          responses: op.responses || {},
+        }))
     ),
     raw,
   };
@@ -63,7 +69,6 @@ mock.module("../src/resolve.js", () => ({
 }));
 
 const { callOperation } = await import("../src/commands/call.js");
-
 
 describe("call - GraphQL", () => {
   test("auto-builds query from operation schema", async () => {
@@ -138,7 +143,11 @@ describe("call - GraphQL", () => {
 
   test("auth token in config adds Authorization header", async () => {
     currentSpec = mockGraphQL();
-    currentConfig = { baseUrl: "https://gql.test.com", headers: { "Authorization": "Bearer my-token" }, auth: "my-token" };
+    currentConfig = {
+      baseUrl: "https://gql.test.com",
+      headers: { Authorization: "Bearer my-token" },
+      auth: "my-token",
+    };
     mockFetch({ data: { me: {} } });
 
     await callOperation(["me"]);
@@ -153,10 +162,13 @@ describe("call - GraphQL", () => {
     mockFetch({ data: { posts: [] } });
 
     const tmpFile = resolve(fixturesDir, "_tmp_query.json");
-    writeFileSync(tmpFile, JSON.stringify({
-      query: "{ posts(first: 3) { edges { node { title } } } }",
-      variables: { first: 3 },
-    }));
+    writeFileSync(
+      tmpFile,
+      JSON.stringify({
+        query: "{ posts(first: 3) { edges { node { title } } } }",
+        variables: { first: 3 },
+      })
+    );
 
     try {
       await callOperation(["posts", "--data-file", tmpFile]);

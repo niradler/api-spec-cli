@@ -39,9 +39,10 @@ async function connect(spec) {
     // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
       const clientSecret = loadTokenFile(spec.name).clientSecret;
-      authProvider = spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
-        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
-        : new SpecCliOAuthProvider(spec.name, spec);
+      authProvider =
+        spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
+          ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
+          : new SpecCliOAuthProvider(spec.name, spec);
     }
     transport = new SSEClientTransport(new URL(spec.url), {
       authProvider,
@@ -54,9 +55,10 @@ async function connect(spec) {
     // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
       const clientSecret = loadTokenFile(spec.name).clientSecret;
-      authProvider = spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
-        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
-        : new SpecCliOAuthProvider(spec.name, spec);
+      authProvider =
+        spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
+          ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
+          : new SpecCliOAuthProvider(spec.name, spec);
     }
     transport = new StreamableHTTPClientTransport(new URL(spec.url), {
       authProvider,

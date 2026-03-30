@@ -21,7 +21,10 @@ describe("token file helpers", () => {
   });
 
   test("saveTokenFile + loadTokenFile round-trips data", () => {
-    const data = { tokens: { access_token: "abc", expires_in: 3600 }, clientInfo: { client_id: "x" } };
+    const data = {
+      tokens: { access_token: "abc", expires_in: 3600 },
+      clientInfo: { client_id: "x" },
+    };
     saveTokenFile("myspec", data);
     expect(loadTokenFile("myspec")).toEqual(data);
   });

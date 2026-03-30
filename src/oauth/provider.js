@@ -5,9 +5,11 @@ import { loadTokenFile, saveTokenFile } from "./tokens.js";
 
 function openBrowser(url) {
   const cmd =
-    process.platform === "win32" ? `start "" "${url}"` :
-    process.platform === "darwin" ? `open "${url}"` :
-    `xdg-open "${url}"`;
+    process.platform === "win32"
+      ? `start "" "${url}"`
+      : process.platform === "darwin"
+        ? `open "${url}"`
+        : `xdg-open "${url}"`;
   exec(cmd);
 }
 
@@ -48,7 +50,9 @@ export class SpecCliOAuthProvider {
     this.#name = name;
     this.#flow = entry.oauthFlow || "browser";
     this.#clientId = entry.oauthClientId || undefined;
-    const envPort = process.env.SPEC_OAUTH_CALLBACK_PORT ? parseInt(process.env.SPEC_OAUTH_CALLBACK_PORT, 10) : undefined;
+    const envPort = process.env.SPEC_OAUTH_CALLBACK_PORT
+      ? parseInt(process.env.SPEC_OAUTH_CALLBACK_PORT, 10)
+      : undefined;
     this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort, 10) : envPort;
   }
 
@@ -119,12 +123,14 @@ export class SpecCliOAuthProvider {
   /** Reserve a local port for the OAuth callback. Call before connecting. */
   async prepareRedirect() {
     if (this.#flow === "device") return;
-    this.#redirectPort = this.#fixedPort ?? await getAvailablePort();
+    this.#redirectPort = this.#fixedPort ?? (await getAvailablePort());
   }
 
   redirectToAuthorization(authorizationUrl) {
     if (this.#flow === "device") {
-      process.stderr.write(`\nOpen this URL to authorize spec-cli:\n  ${authorizationUrl.toString()}\n\n`);
+      process.stderr.write(
+        `\nOpen this URL to authorize spec-cli:\n  ${authorizationUrl.toString()}\n\n`
+      );
       return;
     }
 
@@ -151,7 +157,9 @@ export class SpecCliOAuthProvider {
     this.#callbackServer.listen(this.#redirectPort, "127.0.0.1", () => {
       process.stderr.write(`\nOpening browser for authorization...\n`);
       openBrowser(authorizationUrl.toString());
-      process.stderr.write(`Waiting for callback on http://127.0.0.1:${this.#redirectPort}/callback\n`);
+      process.stderr.write(
+        `Waiting for callback on http://127.0.0.1:${this.#redirectPort}/callback\n`
+      );
     });
   }
 
@@ -162,10 +170,17 @@ export class SpecCliOAuthProvider {
 
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        this.#callbackServer?.close();
-        reject(new Error("Authorization timed out after 5 minutes. Run 'spec auth <name>' to try again."));
-      }, 5 * 60 * 1000);
+      timeoutId = setTimeout(
+        () => {
+          this.#callbackServer?.close();
+          reject(
+            new Error(
+              "Authorization timed out after 5 minutes. Run 'spec auth <name>' to try again."
+            )
+          );
+        },
+        5 * 60 * 1000
+      );
     });
 
     try {

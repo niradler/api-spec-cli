@@ -50,7 +50,8 @@ function showOpenAPISchema(spec, target, flags) {
 
 function showGraphQLType(spec, target, flags) {
   const scalars = new Set(["String", "Int", "Float", "Boolean", "ID"]);
-  const userTypes = spec.types?.filter((t) => !t.name.startsWith("__") && !scalars.has(t.name)) || [];
+  const userTypes =
+    spec.types?.filter((t) => !t.name.startsWith("__") && !scalars.has(t.name)) || [];
 
   if (!target) {
     // List type names grouped by kind — compact
@@ -85,7 +86,10 @@ function showGraphQLType(spec, target, flags) {
     result.fields = type.fields.map((f) => ({
       name: f.name,
       type: flattenType(f.type),
-      args: f.args?.length > 0 ? f.args.map((a) => ({ name: a.name, type: flattenType(a.type) })) : undefined,
+      args:
+        f.args?.length > 0
+          ? f.args.map((a) => ({ name: a.name, type: flattenType(a.type) }))
+          : undefined,
     }));
   }
 

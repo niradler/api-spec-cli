@@ -50,7 +50,8 @@ export function getEntry(name) {
   for (const section of ["mcp", "openapi", "graphql"]) {
     const entry = registry[section]?.[name];
     if (entry) {
-      if (!entry.enabled) throw new Error(`Spec '${name}' is disabled. Run 'spec enable ${name}' first.`);
+      if (!entry.enabled)
+        throw new Error(`Spec '${name}' is disabled. Run 'spec enable ${name}' first.`);
       return { ...entry, name, _section: section };
     }
   }

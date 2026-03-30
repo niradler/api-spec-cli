@@ -7,9 +7,10 @@ import { runOAuthFlow } from "../oauth/auth-flow.js";
 export async function addCmd(args) {
   const { flags, positional } = parseArgs(args);
   const name = positional[0];
-  if (!name) throw new Error(
-    "Usage: spec add <name> --openapi <url> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio \"<cmd>\""
-  );
+  if (!name)
+    throw new Error(
+      'Usage: spec add <name> --openapi <url> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio "<cmd>"'
+    );
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     throw new Error("Spec name must contain only letters, numbers, hyphens, and underscores.");
   }
@@ -75,7 +76,9 @@ export async function addCmd(args) {
     };
   } else if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
-    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
+    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) =>
+      p.replace(/^"|"$/g, "")
+    );
     if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
     section = "mcp";
     const env = parseKV(flags.env);
@@ -118,7 +121,7 @@ export async function addCmd(args) {
     };
   } else {
     throw new Error(
-      "Specify a source: --openapi <url>, --graphql <url>, --mcp-http <url>, --mcp-sse <url>, or --mcp-stdio \"<cmd>\""
+      'Specify a source: --openapi <url>, --graphql <url>, --mcp-http <url>, --mcp-sse <url>, or --mcp-stdio "<cmd>"'
     );
   }
 
@@ -131,7 +134,11 @@ export async function addCmd(args) {
   }
 
   // Probe for OAuth on HTTP/SSE MCP entries (skip if static Authorization header already set)
-  if (section === "mcp" && (entry.type === "http" || entry.type === "sse") && !entry.headers?.Authorization) {
+  if (
+    section === "mcp" &&
+    (entry.type === "http" || entry.type === "sse") &&
+    !entry.headers?.Authorization
+  ) {
     await probeAndAuth({ ...entry, name, _section: "mcp" });
   }
 
@@ -142,9 +149,12 @@ async function probeAndAuth(entry) {
   try {
     const { flow } = await runOAuthFlow(entry.name, entry);
     if (flow === "none_required") process.stderr.write(`Connected (no auth required).\n`);
-    else if (flow === "browser") process.stderr.write(`Authorization complete for '${entry.name}'.\n`);
+    else if (flow === "browser")
+      process.stderr.write(`Authorization complete for '${entry.name}'.\n`);
   } catch (e) {
-    process.stderr.write(`Could not reach server: ${e.message}\nRun 'spec auth ${entry.name}' after the server is available.\n`);
+    process.stderr.write(
+      `Could not reach server: ${e.message}\nRun 'spec auth ${entry.name}' after the server is available.\n`
+    );
     // Signal partial failure: entry was saved but connection failed
     process.exitCode = 1;
   }

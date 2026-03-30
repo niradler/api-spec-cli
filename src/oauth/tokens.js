@@ -43,7 +43,10 @@ export function clearTokenFile(name, { revokeAll = false } = {}) {
   // Keep permanent credentials; wipe session tokens, discovery, and clientInfo
   const existing = loadTokenFile(name);
   if (existing.clientSecret) {
-    writeFileSync(tokenPath(name), JSON.stringify({ clientSecret: existing.clientSecret }, null, 2));
+    writeFileSync(
+      tokenPath(name),
+      JSON.stringify({ clientSecret: existing.clientSecret }, null, 2)
+    );
   } else {
     rmSync(file);
   }
