@@ -7,7 +7,8 @@
     "spec": "bin/spec.js"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "release": "bash release.sh"
   },
   "files": [
     "bin/",
