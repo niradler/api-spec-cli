@@ -1,5 +1,6 @@
 import { createServer } from "http";
 import { exec } from "child_process";
+import { randomUUID } from "crypto";
 import { loadTokenFile, saveTokenFile } from "./tokens.js";
 
 function openBrowser(url) {
@@ -40,7 +41,7 @@ export class SpecCliOAuthProvider {
   #codeVerifier;
   #pendingCode = null;
   #callbackServer = null;
-  #expectedState = null;
+  #oauthState = null;
   #clientId;
 
   constructor(name, entry = {}) {
@@ -58,13 +59,20 @@ export class SpecCliOAuthProvider {
   }
 
   get clientMetadata() {
+    const clientSecret = loadTokenFile(this.#name).clientSecret;
     return {
       client_name: "spec-cli",
       redirect_uris: this.#redirectPort ? [`http://127.0.0.1:${this.#redirectPort}/callback`] : [],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      token_endpoint_auth_method: "none",
+      token_endpoint_auth_method: clientSecret ? "client_secret_post" : "none",
     };
+  }
+
+  /** Called by the SDK to generate a CSRF state parameter for the authorization URL. */
+  state() {
+    if (!this.#oauthState) this.#oauthState = randomUUID();
+    return this.#oauthState;
   }
 
   tokens() {
@@ -120,9 +128,6 @@ export class SpecCliOAuthProvider {
       return;
     }
 
-    // Capture the state parameter for CSRF validation when the callback arrives
-    this.#expectedState = authorizationUrl.searchParams.get("state");
-
     let resolveCode, rejectCode;
     this.#pendingCode = new Promise((resolve, reject) => {
       resolveCode = resolve;
@@ -136,7 +141,7 @@ export class SpecCliOAuthProvider {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end("<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>");
       this.#callbackServer.close();
-      if (this.#expectedState && state !== this.#expectedState) {
+      if (this.#oauthState !== null && state !== this.#oauthState) {
         rejectCode(new Error("OAuth state mismatch — possible CSRF attack"));
       } else {
         resolveCode(code);
