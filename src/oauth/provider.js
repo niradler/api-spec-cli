@@ -37,12 +37,16 @@ export class SpecCliOAuthProvider {
   #name;
   #flow;
   #redirectPort;
+  #fixedPort;
   #codeVerifier;
   #pendingCode;
+  #clientId;
 
   constructor(name, entry = {}) {
     this.#name = name;
     this.#flow = entry.oauthFlow || "browser";
+    this.#clientId = entry.oauthClientId || undefined;
+    this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort) : undefined;
   }
 
   get redirectUrl() {
@@ -70,7 +74,10 @@ export class SpecCliOAuthProvider {
   }
 
   clientInformation() {
-    return loadTokenFile(this.#name).clientInfo ?? undefined;
+    const stored = loadTokenFile(this.#name).clientInfo;
+    if (stored) return stored;
+    if (this.#clientId) return { client_id: this.#clientId };
+    return undefined;
   }
 
   saveClientInformation(info) {
@@ -97,7 +104,7 @@ export class SpecCliOAuthProvider {
   /** Reserve a local port for the OAuth callback. Call before connecting. */
   async prepareRedirect() {
     if (this.#flow === "device") return;
-    this.#redirectPort = await getAvailablePort();
+    this.#redirectPort = this.#fixedPort ?? await getAvailablePort();
   }
 
   redirectToAuthorization(authorizationUrl) {

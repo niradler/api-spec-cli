@@ -93,6 +93,7 @@ export async function addCmd(args) {
       ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
       ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
       ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
+      ...(flags["oauth-callback-port"] ? { oauthCallbackPort: flags["oauth-callback-port"] } : {}),
     };
   } else if (flags["mcp-http"]) {
     section = "mcp";
@@ -107,6 +108,7 @@ export async function addCmd(args) {
       ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
       ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
       ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
+      ...(flags["oauth-callback-port"] ? { oauthCallbackPort: flags["oauth-callback-port"] } : {}),
     };
   } else {
     throw new Error(
@@ -117,8 +119,8 @@ export async function addCmd(args) {
   registry[section][name] = entry;
   saveRegistry(registry);
 
-  // Probe for OAuth on HTTP/SSE MCP entries
-  if (section === "mcp" && (entry.type === "http" || entry.type === "sse")) {
+  // Probe for OAuth on HTTP/SSE MCP entries (skip if static Authorization header already set)
+  if (section === "mcp" && (entry.type === "http" || entry.type === "sse") && !entry.headers?.Authorization) {
     await probeAndAuth({ ...entry, name, _section: "mcp" });
   }
 

@@ -34,7 +34,7 @@ async function connect(spec) {
   } else if (spec.type === "sse") {
     const h = spec.headers;
     let authProvider;
-    if (spec.name) {
+    if (spec.name && !h?.Authorization) {
       authProvider = spec.oauthClientId && spec.oauthClientSecret
         ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
@@ -46,7 +46,7 @@ async function connect(spec) {
   } else if (spec.type === "http") {
     const h = spec.headers;
     let authProvider;
-    if (spec.name) {
+    if (spec.name && !h?.Authorization) {
       authProvider = spec.oauthClientId && spec.oauthClientSecret
         ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
