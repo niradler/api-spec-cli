@@ -7,6 +7,7 @@ import { typesCmd } from "./commands/types.js";
 import { addCmd } from "./commands/add.js";
 import { specsCmd, registryMutate } from "./commands/specs.js";
 import { grepCmd } from "./commands/grep.js";
+import { authCmd } from "./commands/auth.js";
 import { out, err, setFormat } from "./output.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
@@ -78,6 +79,8 @@ CONFIG (persisted in .spec-cli/config.json — lowest priority):
   spec config unset auth
 
 OTHER:
+  spec auth <name>                     Re-authenticate an OAuth-protected MCP spec
+  spec auth <name> --revoke            Clear stored OAuth token
   spec validate <file-or-url>          Check OpenAPI spec for errors
   --format json|text|yaml              Output format (default: json)
 
@@ -161,6 +164,9 @@ export async function run(args) {
         break;
       case "grep":
         await grepCmd(args.slice(1));
+        break;
+      case "auth":
+        await authCmd(args.slice(1));
         break;
       default:
         err(`Unknown command: ${cmd}. Run 'spec help' for usage.`);
