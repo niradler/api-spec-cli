@@ -16,7 +16,10 @@ export async function runOAuthFlow(name, entry) {
   const TransportClass = entry.type === "sse" ? SSEClientTransport : StreamableHTTPClientTransport;
   const clientSecret = loadTokenFile(name).clientSecret;
 
-  if (entry.oauthClientId && clientSecret) {
+  // Only use client credentials grant when explicitly requested.
+  // Having a clientSecret does NOT imply client_credentials — for most OAuth apps
+  // (e.g. GitHub) the secret is used during the authorization code token exchange.
+  if (entry.oauthFlow === "client_credentials" && entry.oauthClientId && clientSecret) {
     process.stderr.write(`Using client credentials flow for '${name}'...\n`);
     const provider = new ClientCredentialsProvider({ clientId: entry.oauthClientId, clientSecret });
     const transport = new TransportClass(new URL(entry.url), { authProvider: provider });
@@ -46,8 +49,11 @@ export async function runOAuthFlow(name, entry) {
     process.stderr.write(`Waiting for browser authorization...\n`);
     const code = await provider.waitForAuthCode();
     await transport.finishAuth(code);
-    await client.connect(transport);
-    await client.close();
+    // Transport was already started by the first connect() — must use a fresh one
+    const transport2 = new TransportClass(new URL(entry.url), { authProvider: provider });
+    const client2 = new Client({ name: "spec-cli", version: "1.0.0" });
+    await client2.connect(transport2);
+    await client2.close();
     return { flow: "browser" };
   }
 }

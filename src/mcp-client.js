@@ -39,7 +39,7 @@ async function connect(spec) {
     // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
       const clientSecret = loadTokenFile(spec.name).clientSecret;
-      authProvider = spec.oauthClientId && clientSecret
+      authProvider = spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
         ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
     }
@@ -54,7 +54,7 @@ async function connect(spec) {
     // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
       const clientSecret = loadTokenFile(spec.name).clientSecret;
-      authProvider = spec.oauthClientId && clientSecret
+      authProvider = spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
         ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
     }

@@ -1,14 +1,13 @@
 import { createServer } from "http";
-import { spawn } from "child_process";
+import { exec } from "child_process";
 import { loadTokenFile, saveTokenFile } from "./tokens.js";
 
 function openBrowser(url) {
   const cmd =
-    process.platform === "win32" ? "cmd" :
-    process.platform === "darwin" ? "open" : "xdg-open";
-  const args =
-    process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
+    process.platform === "win32" ? `start "" "${url}"` :
+    process.platform === "darwin" ? `open "${url}"` :
+    `xdg-open "${url}"`;
+  exec(cmd);
 }
 
 function getAvailablePort() {
@@ -79,7 +78,12 @@ export class SpecCliOAuthProvider {
   clientInformation() {
     const stored = loadTokenFile(this.#name).clientInfo;
     if (stored) return stored;
-    if (this.#clientId) return { client_id: this.#clientId };
+    if (this.#clientId) {
+      const clientSecret = loadTokenFile(this.#name).clientSecret;
+      return clientSecret
+        ? { client_id: this.#clientId, client_secret: clientSecret }
+        : { client_id: this.#clientId };
+    }
     return undefined;
   }
 
