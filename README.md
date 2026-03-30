@@ -216,6 +216,42 @@ Use `grep` for search (substring) — `--allow-tool` / `--disable-tool` for prec
 
 ---
 
+## OAuth / Authentication
+
+MCP HTTP and SSE servers that require OAuth 2.1 are handled automatically. spec-cli detects the auth requirement on `spec add` and completes the flow before returning.
+
+### Interactive (browser) — default
+
+```bash
+spec add github --mcp-http https://api.githubcopilot.com/mcp/
+# Browser opens automatically if OAuth is required
+```
+
+### Headless / device flow
+
+```bash
+spec add myserver --mcp-http https://... --oauth-flow device
+# Prints a URL to stderr — open in any browser to authorize
+```
+
+### Machine / CI (client credentials)
+
+```bash
+spec add myserver --mcp-http https://... \
+  --oauth-client-id <id> --oauth-client-secret <secret>
+```
+
+### Re-authenticate
+
+```bash
+spec auth myserver           # Re-run the OAuth flow
+spec auth myserver --revoke  # Clear stored token only
+```
+
+Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`.
+
+---
+
 ## Config
 
 Persistent config stored in `.spec-cli/config.json` (lowest priority — overridden by registry entry config and call-time flags).
@@ -279,4 +315,9 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 |---|---|
 | `~/spec-cli-config/registry.json` | Global named registry |
 | `~/spec-cli-config/cache/<name>.json` | Cached spec per registered entry |
+| `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
+
+## Planned
+
+- `spec import <file>` — bulk import servers from VS Code `mcp.json` or Claude Desktop config format

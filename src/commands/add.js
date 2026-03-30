@@ -1,6 +1,12 @@
 import { parseArgs, parseKV } from "../args.js";
 import { getRegistry, saveRegistry } from "../registry.js";
 import { out } from "../output.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+import { SpecCliOAuthProvider } from "../oauth/provider.js";
 
 export async function addCmd(args) {
   const { flags, positional } = parseArgs(args);
@@ -110,5 +116,56 @@ export async function addCmd(args) {
 
   registry[section][name] = entry;
   saveRegistry(registry);
+
+  // Probe for OAuth on HTTP/SSE MCP entries
+  if (section === "mcp" && (entry.type === "http" || entry.type === "sse")) {
+    await probeAndAuth({ ...entry, name, _section: "mcp" });
+  }
+
   out({ ok: true, name, section, type: entry.type });
+}
+
+async function probeAndAuth(entry) {
+  const TransportClass = entry.type === "sse" ? SSEClientTransport : StreamableHTTPClientTransport;
+
+  if (entry.oauthClientId && entry.oauthClientSecret) {
+    process.stderr.write(`Using client credentials flow for '${entry.name}'...\n`);
+    const provider = new ClientCredentialsProvider({
+      clientId: entry.oauthClientId,
+      clientSecret: entry.oauthClientSecret,
+    });
+    const transport = new TransportClass(new URL(entry.url), { authProvider: provider });
+    const client = new Client({ name: "spec-cli", version: "1.0.0" });
+    await client.connect(transport);
+    await client.close();
+    process.stderr.write(`Connected with client credentials.\n`);
+    return;
+  }
+
+  const provider = new SpecCliOAuthProvider(entry.name, entry);
+  await provider.prepareRedirect();
+  const transport = new TransportClass(new URL(entry.url), { authProvider: provider });
+  const client = new Client({ name: "spec-cli", version: "1.0.0" });
+
+  try {
+    await client.connect(transport);
+    await client.close();
+    process.stderr.write(`Connected (no auth required).\n`);
+  } catch (e) {
+    if (!(e instanceof UnauthorizedError)) {
+      process.stderr.write(`Could not reach server: ${e.message}\nRun 'spec auth ${entry.name}' after the server is available.\n`);
+      return;
+    }
+    if ((entry.oauthFlow || "browser") !== "browser") {
+      throw new Error(
+        `Device flow: open the URL above, complete authorization, then run:\n  spec auth ${entry.name}`
+      );
+    }
+    process.stderr.write(`Waiting for browser authorization...\n`);
+    const code = await provider.waitForAuthCode();
+    await transport.finishAuth(code);
+    await client.connect(transport);
+    await client.close();
+    process.stderr.write(`Authorization complete for '${entry.name}'.\n`);
+  }
 }
