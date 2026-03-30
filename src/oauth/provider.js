@@ -39,14 +39,16 @@ export class SpecCliOAuthProvider {
   #redirectPort;
   #fixedPort;
   #codeVerifier;
-  #pendingCode;
+  #pendingCode = null;
+  #callbackServer = null;
+  #expectedState = null;
   #clientId;
 
   constructor(name, entry = {}) {
     this.#name = name;
     this.#flow = entry.oauthFlow || "browser";
     this.#clientId = entry.oauthClientId || undefined;
-    this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort) : undefined;
+    this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort, 10) : undefined;
   }
 
   get redirectUrl() {
@@ -113,19 +115,30 @@ export class SpecCliOAuthProvider {
       return;
     }
 
-    let resolveCode;
-    this.#pendingCode = new Promise((resolve) => { resolveCode = resolve; });
+    // Capture the state parameter for CSRF validation when the callback arrives
+    this.#expectedState = authorizationUrl.searchParams.get("state");
 
-    const server = createServer((req, res) => {
-      const url = new URL(req.url, `http://127.0.0.1:${this.#redirectPort}`);
-      const code = url.searchParams.get("code");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end("<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>");
-      server.close();
-      resolveCode(code);
+    let resolveCode, rejectCode;
+    this.#pendingCode = new Promise((resolve, reject) => {
+      resolveCode = resolve;
+      rejectCode = reject;
     });
 
-    server.listen(this.#redirectPort, "127.0.0.1", () => {
+    this.#callbackServer = createServer((req, res) => {
+      const url = new URL(req.url, `http://127.0.0.1:${this.#redirectPort}`);
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>");
+      this.#callbackServer.close();
+      if (this.#expectedState && state !== this.#expectedState) {
+        rejectCode(new Error("OAuth state mismatch — possible CSRF attack"));
+      } else {
+        resolveCode(code);
+      }
+    });
+
+    this.#callbackServer.listen(this.#redirectPort, "127.0.0.1", () => {
       process.stderr.write(`\nOpening browser for authorization...\n`);
       openBrowser(authorizationUrl.toString());
       process.stderr.write(`Waiting for callback on http://127.0.0.1:${this.#redirectPort}/callback\n`);
@@ -136,6 +149,19 @@ export class SpecCliOAuthProvider {
   async waitForAuthCode() {
     if (this.#flow === "device") throw new Error("Device flow does not use a local callback");
     if (!this.#pendingCode) throw new Error("redirectToAuthorization() was not called");
-    return this.#pendingCode;
+
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        this.#callbackServer?.close();
+        reject(new Error("Authorization timed out after 5 minutes. Run 'spec auth <name>' to try again."));
+      }, 5 * 60 * 1000);
+    });
+
+    try {
+      return await Promise.race([this.#pendingCode, timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }

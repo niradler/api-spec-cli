@@ -3,3 +3,5 @@ node_modules/
 .env
 bun.lockb
 .claude
+dist/
+docs/superpowers/

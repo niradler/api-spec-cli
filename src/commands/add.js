@@ -1,12 +1,8 @@
 import { parseArgs, parseKV } from "../args.js";
 import { getRegistry, saveRegistry } from "../registry.js";
 import { out } from "../output.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
-import { SpecCliOAuthProvider } from "../oauth/provider.js";
+import { saveTokenFile } from "../oauth/tokens.js";
+import { runOAuthFlow } from "../oauth/auth-flow.js";
 
 export async function addCmd(args) {
   const { flags, positional } = parseArgs(args);
@@ -37,6 +33,18 @@ export async function addCmd(args) {
     enabled: true,
     ...(flags.description ? { description: flags.description } : {}),
   };
+
+  // Validate callback port once, shared by both mcp-http and mcp-sse
+  let callbackPort;
+  if (flags["oauth-callback-port"]) {
+    callbackPort = parseInt(flags["oauth-callback-port"], 10);
+    if (isNaN(callbackPort) || callbackPort < 1 || callbackPort > 65535) {
+      throw new Error("--oauth-callback-port must be an integer between 1 and 65535");
+    }
+  }
+
+  // Client secret is never stored in the registry — saved to token file below
+  const oauthClientSecret = flags["oauth-client-secret"];
 
   let section, entry;
 
@@ -92,8 +100,7 @@ export async function addCmd(args) {
       ...(Object.keys(headers).length ? { headers } : {}),
       ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
       ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
-      ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
-      ...(flags["oauth-callback-port"] ? { oauthCallbackPort: flags["oauth-callback-port"] } : {}),
+      ...(callbackPort ? { oauthCallbackPort: callbackPort } : {}),
     };
   } else if (flags["mcp-http"]) {
     section = "mcp";
@@ -107,8 +114,7 @@ export async function addCmd(args) {
       ...(Object.keys(headers).length ? { headers } : {}),
       ...(flags["oauth-flow"] ? { oauthFlow: flags["oauth-flow"] } : {}),
       ...(flags["oauth-client-id"] ? { oauthClientId: flags["oauth-client-id"] } : {}),
-      ...(flags["oauth-client-secret"] ? { oauthClientSecret: flags["oauth-client-secret"] } : {}),
-      ...(flags["oauth-callback-port"] ? { oauthCallbackPort: flags["oauth-callback-port"] } : {}),
+      ...(callbackPort ? { oauthCallbackPort: callbackPort } : {}),
     };
   } else {
     throw new Error(
@@ -119,6 +125,11 @@ export async function addCmd(args) {
   registry[section][name] = entry;
   saveRegistry(registry);
 
+  // Store client secret in token file (not registry) — it's sensitive
+  if (oauthClientSecret) {
+    saveTokenFile(name, { clientSecret: oauthClientSecret });
+  }
+
   // Probe for OAuth on HTTP/SSE MCP entries (skip if static Authorization header already set)
   if (section === "mcp" && (entry.type === "http" || entry.type === "sse") && !entry.headers?.Authorization) {
     await probeAndAuth({ ...entry, name, _section: "mcp" });
@@ -128,46 +139,13 @@ export async function addCmd(args) {
 }
 
 async function probeAndAuth(entry) {
-  const TransportClass = entry.type === "sse" ? SSEClientTransport : StreamableHTTPClientTransport;
-
-  if (entry.oauthClientId && entry.oauthClientSecret) {
-    process.stderr.write(`Using client credentials flow for '${entry.name}'...\n`);
-    const provider = new ClientCredentialsProvider({
-      clientId: entry.oauthClientId,
-      clientSecret: entry.oauthClientSecret,
-    });
-    const transport = new TransportClass(new URL(entry.url), { authProvider: provider });
-    const client = new Client({ name: "spec-cli", version: "1.0.0" });
-    await client.connect(transport);
-    await client.close();
-    process.stderr.write(`Connected with client credentials.\n`);
-    return;
-  }
-
-  const provider = new SpecCliOAuthProvider(entry.name, entry);
-  await provider.prepareRedirect();
-  const transport = new TransportClass(new URL(entry.url), { authProvider: provider });
-  const client = new Client({ name: "spec-cli", version: "1.0.0" });
-
   try {
-    await client.connect(transport);
-    await client.close();
-    process.stderr.write(`Connected (no auth required).\n`);
+    const { flow } = await runOAuthFlow(entry.name, entry);
+    if (flow === "none_required") process.stderr.write(`Connected (no auth required).\n`);
+    else if (flow === "browser") process.stderr.write(`Authorization complete for '${entry.name}'.\n`);
   } catch (e) {
-    if (!(e instanceof UnauthorizedError)) {
-      process.stderr.write(`Could not reach server: ${e.message}\nRun 'spec auth ${entry.name}' after the server is available.\n`);
-      return;
-    }
-    if ((entry.oauthFlow || "browser") !== "browser") {
-      throw new Error(
-        `Device flow: open the URL above, complete authorization, then run:\n  spec auth ${entry.name}`
-      );
-    }
-    process.stderr.write(`Waiting for browser authorization...\n`);
-    const code = await provider.waitForAuthCode();
-    await transport.finishAuth(code);
-    await client.connect(transport);
-    await client.close();
-    process.stderr.write(`Authorization complete for '${entry.name}'.\n`);
+    process.stderr.write(`Could not reach server: ${e.message}\nRun 'spec auth ${entry.name}' after the server is available.\n`);
+    // Signal partial failure: entry was saved but connection failed
+    process.exitCode = 1;
   }
 }

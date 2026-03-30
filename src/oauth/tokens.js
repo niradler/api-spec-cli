@@ -28,7 +28,23 @@ export function saveTokenFile(name, data) {
   writeFileSync(tokenPath(name), JSON.stringify({ ...existing, ...data }, null, 2));
 }
 
-export function clearTokenFile(name) {
+/**
+ * Clear session tokens for re-auth.
+ * Preserves clientSecret (a permanent credential) unless revokeAll is true.
+ * Pass { revokeAll: true } for `spec auth <name> --revoke` to wipe everything.
+ */
+export function clearTokenFile(name, { revokeAll = false } = {}) {
   const file = tokenPath(name);
-  if (existsSync(file)) rmSync(file);
+  if (!existsSync(file)) return;
+  if (revokeAll) {
+    rmSync(file);
+    return;
+  }
+  // Keep permanent credentials; wipe session tokens, discovery, and clientInfo
+  const existing = loadTokenFile(name);
+  if (existing.clientSecret) {
+    writeFileSync(tokenPath(name), JSON.stringify({ clientSecret: existing.clientSecret }, null, 2));
+  } else {
+    rmSync(file);
+  }
 }

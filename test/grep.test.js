@@ -23,6 +23,7 @@ function allEntriesFromMock(registry) {
 mock.module("../src/registry.js", () => ({
   getRegistry: () => registryEntries,
   saveRegistry: () => {},
+  allEntries: (registry) => allEntriesFromMock(registry),
   getEntry: (name) => {
     const e = allEntriesFromMock(registryEntries).find((e) => e.name === name);
     if (!e) throw new Error(`No spec named '${name}'`);

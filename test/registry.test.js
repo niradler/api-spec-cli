@@ -40,6 +40,7 @@ mock.module("../src/registry.js", () => ({
     ensureDir(testRegistryDir);
     writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
   },
+  allEntries: (registry) => allEntriesFromRegistry(registry),
   getEntry: (name) => {
     const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : EMPTY_REGISTRY();
     const entry = allEntriesFromRegistry(registry).find((e) => e.name === name);

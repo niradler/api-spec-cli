@@ -1,18 +1,8 @@
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
-import { getRegistry, getEntry, getCachedSpec, saveCachedSpec } from "../registry.js";
+import { getRegistry, getEntry, getCachedSpec, saveCachedSpec, allEntries } from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { matchGlob } from "../glob.js";
-
-function allEntries(registry) {
-  const entries = [];
-  for (const section of ["mcp", "openapi", "graphql"]) {
-    for (const [name, entry] of Object.entries(registry[section] || {})) {
-      entries.push({ ...entry, name, _section: section });
-    }
-  }
-  return entries;
-}
 
 export async function grepCmd(args) {
   const { flags, positional } = parseArgs(args);

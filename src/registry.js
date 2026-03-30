@@ -35,6 +35,16 @@ export function saveRegistry(registry) {
  * Find an entry by name across all sections.
  * Returns the entry with `name` and `_section` injected.
  */
+export function allEntries(registry) {
+  const entries = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      entries.push({ ...entry, name, _section: section });
+    }
+  }
+  return entries;
+}
+
 export function getEntry(name) {
   const registry = getRegistry();
   for (const section of ["mcp", "openapi", "graphql"]) {

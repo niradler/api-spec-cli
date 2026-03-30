@@ -34,6 +34,10 @@ REGISTRY (register once, use anywhere):
              --cwd <path> (stdio only)
              --allow-tool <glob> (repeatable)
              --disable-tool <glob> (repeatable)
+             --oauth-flow browser|device           OAuth flow (http/sse only, default: browser)
+             --oauth-client-id <id>                Pre-registered OAuth client ID
+             --oauth-client-secret <secret>        Client secret (stored securely, not in registry)
+             --oauth-callback-port <1-65535>        Fixed local port for browser callback
 
   spec specs                           List all registered specs
   spec specs --compact false           Show full entry config

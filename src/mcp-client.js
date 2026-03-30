@@ -4,6 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SpecCliOAuthProvider } from "./oauth/provider.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+import { loadTokenFile } from "./oauth/tokens.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
@@ -34,9 +35,12 @@ async function connect(spec) {
   } else if (spec.type === "sse") {
     const h = spec.headers;
     let authProvider;
+    // spec.name is only set for registry entries; inline connections (--mcp-sse <url>)
+    // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
-      authProvider = spec.oauthClientId && spec.oauthClientSecret
-        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
+      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      authProvider = spec.oauthClientId && clientSecret
+        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
     }
     transport = new SSEClientTransport(new URL(spec.url), {
@@ -46,9 +50,12 @@ async function connect(spec) {
   } else if (spec.type === "http") {
     const h = spec.headers;
     let authProvider;
+    // spec.name is only set for registry entries; inline connections (--mcp-http <url>)
+    // have no token storage location, so no OAuth provider is created for them.
     if (spec.name && !h?.Authorization) {
-      authProvider = spec.oauthClientId && spec.oauthClientSecret
-        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
+      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      authProvider = spec.oauthClientId && clientSecret
+        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
         : new SpecCliOAuthProvider(spec.name, spec);
     }
     transport = new StreamableHTTPClientTransport(new URL(spec.url), {

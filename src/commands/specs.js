@@ -1,17 +1,7 @@
 import { parseArgs } from "../args.js";
-import { getRegistry, saveRegistry, getEntry, removeCachedSpec, saveCachedSpec } from "../registry.js";
+import { getRegistry, saveRegistry, getEntry, removeCachedSpec, saveCachedSpec, allEntries } from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { out } from "../output.js";
-
-function allEntries(registry) {
-  const entries = [];
-  for (const section of ["mcp", "openapi", "graphql"]) {
-    for (const [name, entry] of Object.entries(registry[section] || {})) {
-      entries.push({ ...entry, name, _section: section });
-    }
-  }
-  return entries;
-}
 
 function findSection(registry, name) {
   for (const section of ["mcp", "openapi", "graphql"]) {
