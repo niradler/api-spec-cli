@@ -2,6 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SpecCliOAuthProvider } from "./oauth/provider.js";
+import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
@@ -31,12 +33,26 @@ async function connect(spec) {
     });
   } else if (spec.type === "sse") {
     const h = spec.headers;
+    let authProvider;
+    if (spec.name) {
+      authProvider = spec.oauthClientId && spec.oauthClientSecret
+        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
+        : new SpecCliOAuthProvider(spec.name, spec);
+    }
     transport = new SSEClientTransport(new URL(spec.url), {
+      authProvider,
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else if (spec.type === "http") {
     const h = spec.headers;
+    let authProvider;
+    if (spec.name) {
+      authProvider = spec.oauthClientId && spec.oauthClientSecret
+        ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret: spec.oauthClientSecret })
+        : new SpecCliOAuthProvider(spec.name, spec);
+    }
     transport = new StreamableHTTPClientTransport(new URL(spec.url), {
+      authProvider,
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else {
