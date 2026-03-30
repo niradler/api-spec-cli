@@ -89,8 +89,9 @@ OTHER:
   --format json|text|yaml              Output format (default: json)
 
 ENV VARS (MCP):
-  MCP_MAX_RETRIES=3        Retry attempts on connection failure (default: 3)
-  MCP_RETRY_DELAY=1000     Base retry delay in ms, doubles each attempt (default: 1000)
+  MCP_MAX_RETRIES=3               Retry attempts on connection failure (default: 3)
+  MCP_RETRY_DELAY=1000            Base retry delay in ms, doubles each attempt (default: 1000)
+  SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
 
 EXAMPLES:
   spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"

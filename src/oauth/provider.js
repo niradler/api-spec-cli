@@ -48,7 +48,8 @@ export class SpecCliOAuthProvider {
     this.#name = name;
     this.#flow = entry.oauthFlow || "browser";
     this.#clientId = entry.oauthClientId || undefined;
-    this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort, 10) : undefined;
+    const envPort = process.env.SPEC_OAUTH_CALLBACK_PORT ? parseInt(process.env.SPEC_OAUTH_CALLBACK_PORT, 10) : undefined;
+    this.#fixedPort = entry.oauthCallbackPort ? parseInt(entry.oauthCallbackPort, 10) : envPort;
   }
 
   get redirectUrl() {
