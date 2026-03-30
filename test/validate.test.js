@@ -3,8 +3,12 @@ import { resolve } from "path";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 const { validateSpec } = await import("../src/commands/validate.js");

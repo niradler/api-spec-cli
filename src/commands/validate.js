@@ -88,7 +88,10 @@ function validateInfo(doc, errors, warnings) {
     errors.push({ path: "info.version", message: "Missing required 'info.version'" });
   }
   if (!doc.info.description) {
-    warnings.push({ path: "info.description", message: "Missing 'info.description' (recommended)" });
+    warnings.push({
+      path: "info.description",
+      message: "Missing 'info.description' (recommended)",
+    });
   }
 }
 
@@ -121,7 +124,10 @@ function validatePaths(doc, errors, warnings, isV3) {
       if (method.startsWith("x-") || method === "parameters" || method === "$ref") continue;
 
       if (!METHODS.has(method)) {
-        warnings.push({ path: `paths.${path}.${method}`, message: `Unknown HTTP method '${method}'` });
+        warnings.push({
+          path: `paths.${path}.${method}`,
+          message: `Unknown HTTP method '${method}'`,
+        });
         continue;
       }
 
@@ -161,13 +167,19 @@ function validatePaths(doc, errors, warnings, isV3) {
       for (const param of pathParams) {
         if (!declaredParams.has(param)) {
           // Only warn — the param might be declared via $ref
-          warnings.push({ path: opPath, message: `Path parameter '{${param}}' may not be declared in parameters` });
+          warnings.push({
+            path: opPath,
+            message: `Path parameter '{${param}}' may not be declared in parameters`,
+          });
         }
       }
 
       // Request body on GET/DELETE/HEAD
       if (isV3 && op.requestBody && ["get", "delete", "head"].includes(method)) {
-        warnings.push({ path: opPath, message: `requestBody on ${method.toUpperCase()} is unusual` });
+        warnings.push({
+          path: opPath,
+          message: `requestBody on ${method.toUpperCase()} is unusual`,
+        });
       }
     }
   }
@@ -196,7 +208,15 @@ function validateSchema(schema, path, errors, warnings) {
   if (!schema || typeof schema !== "object") return;
   if (schema.$ref) return; // reference, skip
 
-  const VALID_TYPES = new Set(["string", "number", "integer", "boolean", "array", "object", "null"]);
+  const VALID_TYPES = new Set([
+    "string",
+    "number",
+    "integer",
+    "boolean",
+    "array",
+    "object",
+    "null",
+  ]);
 
   if (schema.type && !VALID_TYPES.has(schema.type)) {
     errors.push({ path, message: `Invalid type '${schema.type}'` });
@@ -220,11 +240,17 @@ function validateSchema(schema, path, errors, warnings) {
 function validateServers(doc, errors, warnings, isV3) {
   if (isV3) {
     if (!doc.servers || doc.servers.length === 0) {
-      warnings.push({ path: "servers", message: "No servers defined — agent will need baseUrl configured" });
+      warnings.push({
+        path: "servers",
+        message: "No servers defined — agent will need baseUrl configured",
+      });
     }
   } else {
     if (!doc.host) {
-      warnings.push({ path: "host", message: "No host defined — agent will need baseUrl configured" });
+      warnings.push({
+        path: "host",
+        message: "No host defined — agent will need baseUrl configured",
+      });
     }
   }
 }

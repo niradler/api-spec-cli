@@ -4,8 +4,12 @@ import { resolve } from "path";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 const fixturesDir = resolve(import.meta.dir, "fixtures");
@@ -17,18 +21,20 @@ function mockOpenAPI() {
     version: raw.openapi,
     title: raw.info.title,
     operations: Object.entries(raw.paths).flatMap(([path, methods]) =>
-      Object.entries(methods).filter(([m]) => !m.startsWith("x-") && m !== "parameters").map(([method, op]) => ({
-        id: op.operationId || `${method.toUpperCase()} ${path}`,
-        method: method.toUpperCase(),
-        path,
-        summary: op.summary || null,
-        description: op.description || null,
-        parameters: op.parameters || [],
-        requestBody: op.requestBody || null,
-        responses: op.responses || {},
-        tags: op.tags || [],
-        deprecated: op.deprecated || false,
-      }))
+      Object.entries(methods)
+        .filter(([m]) => !m.startsWith("x-") && m !== "parameters")
+        .map(([method, op]) => ({
+          id: op.operationId || `${method.toUpperCase()} ${path}`,
+          method: method.toUpperCase(),
+          path,
+          summary: op.summary || null,
+          description: op.description || null,
+          parameters: op.parameters || [],
+          requestBody: op.requestBody || null,
+          responses: op.responses || {},
+          tags: op.tags || [],
+          deprecated: op.deprecated || false,
+        }))
     ),
     raw,
     components: raw.components,
@@ -45,8 +51,20 @@ function mockMCP() {
     transport: "streamable-http",
     url: "https://example.com/mcp",
     tools: [
-      { name: "search_docs", description: "Search documentation", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
-      { name: "get_page", description: "Get a page by URL", inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
+      {
+        name: "search_docs",
+        description: "Search documentation",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "get_page",
+        description: "Get a page by URL",
+        inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+      },
     ],
   };
 }
@@ -61,7 +79,10 @@ mock.module("../src/resolve.js", () => ({
 const { listOperations } = await import("../src/commands/list.js");
 
 describe("list - OpenAPI", () => {
-  beforeEach(() => { captured = null; currentSpec = mockOpenAPI(); });
+  beforeEach(() => {
+    captured = null;
+    currentSpec = mockOpenAPI();
+  });
 
   test("lists all operations compact by default", async () => {
     await listOperations([]);
@@ -101,7 +122,10 @@ describe("list - OpenAPI", () => {
 });
 
 describe("list - GraphQL", () => {
-  beforeEach(() => { captured = null; currentSpec = mockGraphQL(); });
+  beforeEach(() => {
+    captured = null;
+    currentSpec = mockGraphQL();
+  });
 
   test("lists compact with id and kind", async () => {
     await listOperations([]);
@@ -123,13 +147,19 @@ describe("list - GraphQL", () => {
 });
 
 describe("list - MCP", () => {
-  beforeEach(() => { captured = null; currentSpec = mockMCP(); });
+  beforeEach(() => {
+    captured = null;
+    currentSpec = mockMCP();
+  });
 
   test("lists tools compact by default", async () => {
     await listOperations([]);
     expect(captured.type).toBe("mcp");
     expect(captured.total).toBe(2);
-    expect(captured.operations[0]).toEqual({ id: "search_docs", description: "Search documentation" });
+    expect(captured.operations[0]).toEqual({
+      id: "search_docs",
+      description: "Search documentation",
+    });
   });
 
   test("--compact false includes inputSchema", async () => {

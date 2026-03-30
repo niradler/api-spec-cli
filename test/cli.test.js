@@ -74,7 +74,9 @@ describe("CLI integration", () => {
 
   test("spec add / specs / remove works", () => {
     // Clean up first in case previous test left something
-    try { run(`remove testpet`); } catch {}
+    try {
+      run(`remove testpet`);
+    } catch {}
 
     const added = run(`add testpet --openapi ${fixture}`);
     expect(added.ok).toBe(true);
@@ -90,7 +92,9 @@ describe("CLI integration", () => {
   });
 
   test("spec disable / enable works", () => {
-    try { run(`remove testpet2`); } catch {}
+    try {
+      run(`remove testpet2`);
+    } catch {}
     run(`add testpet2 --openapi ${fixture}`);
 
     const disabled = run("disable testpet2");

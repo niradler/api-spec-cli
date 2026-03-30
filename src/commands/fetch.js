@@ -62,8 +62,10 @@ fragment TypeRef on __Type {
 
 function applyFilter(items, nameFn, allowed, disabled) {
   let result = items;
-  if (allowed?.length) result = result.filter((item) => allowed.some((p) => matchFilter(p, nameFn(item))));
-  if (disabled?.length) result = result.filter((item) => !disabled.some((p) => matchFilter(p, nameFn(item))));
+  if (allowed?.length)
+    result = result.filter((item) => allowed.some((p) => matchFilter(p, nameFn(item))));
+  if (disabled?.length)
+    result = result.filter((item) => !disabled.some((p) => matchFilter(p, nameFn(item))));
   return result;
 }
 
@@ -72,23 +74,33 @@ function applyFilter(items, nameFn, allowed, disabled) {
  * Entry shape:
  *   { type: "openapi", source: "<url-or-file>", config: { headers, auth } }
  *   { type: "graphql", source: "<url>", config: { headers, auth } }
- *   { type: "mcp", transport: "stdio|sse|streamable-http", url?, command?, args?, config: { headers, env } }
+ *   { _section: "mcp", type: "stdio"|"sse"|"http", url?, command?, args?, env?, headers? }
  */
 export async function fetchSpec(entry) {
-  if (entry.type === "mcp") return await loadMCPFromEntry(entry);
-  if (entry.type === "graphql") {
+  if (entry._section === "mcp") return await loadMCPFromEntry(entry);
+  if (entry._section === "graphql") {
     const spec = await loadGraphQL(entry.source, entry.config?.headers);
     return {
       ...spec,
-      operations: applyFilter(spec.operations, (op) => op.name, entry.config?.allowedTools, entry.config?.disabledTools),
+      operations: applyFilter(
+        spec.operations,
+        (op) => op.name,
+        entry.config?.allowedTools,
+        entry.config?.disabledTools
+      ),
     };
   }
-  // openapi — url or file; skip GraphQL probe since type is explicitly declared
+  // openapi
   const isUrl = entry.source?.startsWith("http://") || entry.source?.startsWith("https://");
   const spec = isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
   return {
     ...spec,
-    operations: applyFilter(spec.operations, (op) => op.id, entry.config?.allowedTools, entry.config?.disabledTools),
+    operations: applyFilter(
+      spec.operations,
+      (op) => op.id,
+      entry.config?.allowedTools,
+      entry.config?.disabledTools
+    ),
   };
 }
 
@@ -106,38 +118,61 @@ export function inlineEntryFromFlags(flags) {
 
   if (flags["mcp-stdio"]) {
     const raw = flags["mcp-stdio"];
-    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) => p.replace(/^"|"$/g, ""));
+    const parts = (raw.trim() ? raw.match(/(?:[^\s"]+|"[^"]*")+/g) : null)?.map((p) =>
+      p.replace(/^"|"$/g, "")
+    );
     if (!parts?.length) throw new Error("--mcp-stdio requires a non-empty command string");
     return {
-      type: "mcp",
-      transport: "stdio",
+      _section: "mcp",
+      type: "stdio",
       command: parts[0],
       args: parts.slice(1),
       cwd: flags.cwd,
-      config: { env: parseKV(flags.env), ...filterConfig },
+      env: parseKV(flags.env),
+      ...filterConfig,
     };
   }
   if (flags["mcp-sse"]) {
+    const headers = parseKV(flags.header);
+    if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
     return {
-      type: "mcp",
-      transport: "sse",
+      _section: "mcp",
+      type: "sse",
       url: flags["mcp-sse"],
-      config: { headers: parseKV(flags.header), ...filterConfig },
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...filterConfig,
     };
   }
   if (flags["mcp-http"]) {
+    const headers = parseKV(flags.header);
+    if (flags.auth && !headers["Authorization"]) headers["Authorization"] = `Bearer ${flags.auth}`;
     return {
-      type: "mcp",
-      transport: "streamable-http",
+      _section: "mcp",
+      type: "http",
       url: flags["mcp-http"],
-      config: { headers: parseKV(flags.header), ...filterConfig },
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...filterConfig,
     };
   }
   if (flags.graphql) {
-    return { type: "graphql", source: flags.graphql, config: { headers: parseKV(flags.header), ...filterConfig } };
+    return {
+      _section: "graphql",
+      type: "graphql",
+      source: flags.graphql,
+      config: { headers: parseKV(flags.header), ...filterConfig },
+    };
   }
   if (flags.openapi) {
-    return { type: "openapi", source: flags.openapi, config: { headers: parseKV(flags.header), baseUrl: flags["base-url"] || null, ...filterConfig } };
+    return {
+      _section: "openapi",
+      type: "openapi",
+      source: flags.openapi,
+      config: {
+        headers: parseKV(flags.header),
+        baseUrl: flags["base-url"] || null,
+        ...filterConfig,
+      },
+    };
   }
   return null;
 }
@@ -154,17 +189,16 @@ async function loadMCPFromEntry(entry) {
       inputSchema: t.inputSchema || null,
     }));
 
-    mapped = applyFilter(mapped, (t) => t.name, entry.config?.allowedTools, entry.config?.disabledTools);
+    mapped = applyFilter(mapped, (t) => t.name, entry.allowedTools, entry.disabledTools);
 
     return {
       type: "mcp",
       title: entry.name || "MCP Server",
-      transport: entry.transport,
+      transport: entry.type,
       url: entry.url,
       command: entry.command,
       args: entry.args,
       cwd: entry.cwd,
-      config: entry.config,
       tools: mapped,
     };
   } finally {
@@ -175,9 +209,7 @@ async function loadMCPFromEntry(entry) {
 async function loadFromUrl(url, skipGraphQLProbe = false) {
   const lowerUrl = url.toLowerCase();
   const isLikelyFile =
-    lowerUrl.endsWith(".json") ||
-    lowerUrl.endsWith(".yaml") ||
-    lowerUrl.endsWith(".yml");
+    lowerUrl.endsWith(".json") || lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml");
 
   if (!isLikelyFile && !skipGraphQLProbe) {
     try {
@@ -288,7 +320,11 @@ function parseOpenAPI(text, source) {
     version,
     title: doc.info?.title || null,
     description: doc.info?.description || null,
-    servers: doc.servers || (doc.host ? [{ url: `${doc.schemes?.[0] || "https"}://${doc.host}${doc.basePath || ""}` }] : []),
+    servers:
+      doc.servers ||
+      (doc.host
+        ? [{ url: `${doc.schemes?.[0] || "https"}://${doc.host}${doc.basePath || ""}` }]
+        : []),
     operations,
     components: doc.components || doc.definitions || {},
     raw: doc,

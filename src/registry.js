@@ -10,26 +10,52 @@ function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
+const EMPTY = { mcp: {}, openapi: {}, graphql: {} };
+
 export function getRegistry() {
-  if (!existsSync(REGISTRY_FILE)) return [];
+  if (!existsSync(REGISTRY_FILE)) return { ...EMPTY };
   try {
-    return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
-  } catch {
+    const data = JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(`Registry file has old format: ${REGISTRY_FILE}. Delete it to reset.`);
+    }
+    return data;
+  } catch (e) {
+    if (e.message.includes("old format")) throw e;
     throw new Error(`Registry file is corrupt: ${REGISTRY_FILE}. Delete it to reset.`);
   }
 }
 
-export function saveRegistry(entries) {
+export function saveRegistry(registry) {
   ensureDir(REGISTRY_DIR);
-  writeFileSync(REGISTRY_FILE, JSON.stringify(entries, null, 2));
+  writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
+}
+
+/**
+ * Find an entry by name across all sections.
+ * Returns the entry with `name` and `_section` injected.
+ */
+export function allEntries(registry) {
+  const entries = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      entries.push({ ...entry, name, _section: section });
+    }
+  }
+  return entries;
 }
 
 export function getEntry(name) {
   const registry = getRegistry();
-  const entry = registry.find((e) => e.name === name);
-  if (!entry) throw new Error(`No spec named '${name}'. Run 'spec specs' to see available.`);
-  if (!entry.enabled) throw new Error(`Spec '${name}' is disabled. Run 'spec enable ${name}' first.`);
-  return entry;
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    const entry = registry[section]?.[name];
+    if (entry) {
+      if (!entry.enabled)
+        throw new Error(`Spec '${name}' is disabled. Run 'spec enable ${name}' first.`);
+      return { ...entry, name, _section: section };
+    }
+  }
+  throw new Error(`No spec named '${name}'. Run 'spec specs' to see available.`);
 }
 
 export function getCachedSpec(name) {
@@ -38,7 +64,7 @@ export function getCachedSpec(name) {
   try {
     return JSON.parse(readFileSync(file, "utf-8"));
   } catch {
-    return null; // Corrupt cache is treated as a miss — will re-fetch
+    return null;
   }
 }
 

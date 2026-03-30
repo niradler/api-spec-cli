@@ -12,7 +12,7 @@ import { parseKV } from "./args.js";
  */
 export async function resolveSpec(flags) {
   if (flags.spec) {
-    const entry = getEntry(flags.spec);     // throws if missing or disabled
+    const entry = getEntry(flags.spec); // throws if missing or disabled
     let spec = getCachedSpec(flags.spec);
     if (!spec) {
       spec = await fetchSpec(entry);
@@ -29,11 +29,11 @@ export async function resolveSpec(flags) {
 
   throw new Error(
     "No spec source. Pass --spec <name> (registered) or an inline flag:\n" +
-    "  --openapi <url-or-file>\n" +
-    "  --graphql <url>\n" +
-    "  --mcp-http <url>\n" +
-    "  --mcp-sse <url>\n" +
-    '  --mcp-stdio "<cmd args>"'
+      "  --openapi <url-or-file>\n" +
+      "  --graphql <url>\n" +
+      "  --mcp-http <url>\n" +
+      "  --mcp-sse <url>\n" +
+      '  --mcp-stdio "<cmd args>"'
   );
 }
 
@@ -56,9 +56,8 @@ export function resolveConfig(flags, entry) {
   // Apply auth as Authorization header if not already there (case-insensitive check)
   const hasAuthHeader = Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
   if (auth && !hasAuthHeader) {
-    headers["Authorization"] = auth.startsWith("Bearer ") || auth.startsWith("Basic ")
-      ? auth
-      : `Bearer ${auth}`;
+    headers["Authorization"] =
+      auth.startsWith("Bearer ") || auth.startsWith("Basic ") ? auth : `Bearer ${auth}`;
   }
 
   return { auth, baseUrl, headers };

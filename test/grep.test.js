@@ -2,25 +2,42 @@ import { describe, test, expect, beforeEach, mock } from "bun:test";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 // Registry mock with in-memory entries + cache
-let registryEntries = [];
+let registryEntries = {};
 let specCache = {};
+
+function allEntriesFromMock(registry) {
+  const out = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      out.push({ ...entry, name, _section: section });
+    }
+  }
+  return out;
+}
 
 mock.module("../src/registry.js", () => ({
   getRegistry: () => registryEntries,
   saveRegistry: () => {},
+  allEntries: (registry) => allEntriesFromMock(registry),
   getEntry: (name) => {
-    const e = registryEntries.find((e) => e.name === name);
+    const e = allEntriesFromMock(registryEntries).find((e) => e.name === name);
     if (!e) throw new Error(`No spec named '${name}'`);
     if (!e.enabled) throw new Error(`Spec '${name}' is disabled`);
     return e;
   },
   getCachedSpec: (name) => specCache[name] || null,
-  saveCachedSpec: (name, spec) => { specCache[name] = spec; },
+  saveCachedSpec: (name, spec) => {
+    specCache[name] = spec;
+  },
   removeCachedSpec: () => {},
 }));
 
@@ -57,11 +74,11 @@ const GQL_SPEC = {
 
 beforeEach(() => {
   captured = null;
-  registryEntries = [
-    { name: "mymcp", type: "mcp", enabled: true },
-    { name: "myapi", type: "openapi", enabled: true },
-    { name: "mygql", type: "graphql", enabled: true },
-  ];
+  registryEntries = {
+    mcp: { mymcp: { type: "mcp", enabled: true } },
+    openapi: { myapi: { type: "openapi", enabled: true } },
+    graphql: { mygql: { type: "graphql", enabled: true } },
+  };
   specCache = {
     mymcp: MCP_SPEC,
     myapi: OPENAPI_SPEC,
@@ -142,7 +159,7 @@ describe("grep - --spec filter", () => {
   });
 
   test("skips disabled specs when searching all", async () => {
-    registryEntries[0].enabled = false; // disable mymcp
+    registryEntries.mcp.mymcp.enabled = false; // disable mymcp
     await grepCmd(["search"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult).toBeUndefined();

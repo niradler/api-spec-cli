@@ -1,19 +1,32 @@
 import { parseArgs } from "../args.js";
-import { getRegistry, saveRegistry, getEntry, removeCachedSpec, saveCachedSpec } from "../registry.js";
+import {
+  getRegistry,
+  saveRegistry,
+  getEntry,
+  removeCachedSpec,
+  saveCachedSpec,
+  allEntries,
+} from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { out } from "../output.js";
+
+function findSection(registry, name) {
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    if (registry[section]?.[name]) return section;
+  }
+  return null;
+}
 
 export async function specsCmd(args) {
   const { flags } = parseArgs(args);
   const compact = flags.compact !== "false";
   const registry = getRegistry();
 
-  const specs = registry.map((e) => {
+  const specs = allEntries(registry).map((e) => {
     if (compact) {
       return {
         name: e.name,
         type: e.type,
-        transport: e.transport,
         description: e.description || null,
         enabled: e.enabled,
       };
@@ -30,11 +43,11 @@ export async function registryMutate(action, args) {
   if (!name) throw new Error(`Usage: spec ${action} <name>`);
 
   const registry = getRegistry();
-  const idx = registry.findIndex((e) => e.name === name);
-  if (idx === -1) throw new Error(`No spec named '${name}'. Run 'spec specs' to see available.`);
+  const section = findSection(registry, name);
+  if (!section) throw new Error(`No spec named '${name}'. Run 'spec specs' to see available.`);
 
   if (action === "remove") {
-    registry.splice(idx, 1);
+    delete registry[section][name];
     saveRegistry(registry);
     removeCachedSpec(name);
     out({ ok: true, removed: name });
@@ -42,21 +55,21 @@ export async function registryMutate(action, args) {
   }
 
   if (action === "enable") {
-    registry[idx].enabled = true;
+    registry[section][name].enabled = true;
     saveRegistry(registry);
     out({ ok: true, enabled: name });
     return;
   }
 
   if (action === "disable") {
-    registry[idx].enabled = false;
+    registry[section][name].enabled = false;
     saveRegistry(registry);
     out({ ok: true, disabled: name });
     return;
   }
 
   if (action === "refresh") {
-    const entry = registry[idx];
+    const entry = { ...registry[section][name], name, _section: section };
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled. Enable it first.`);
     const spec = await fetchSpec(entry);
     saveCachedSpec(name, spec);

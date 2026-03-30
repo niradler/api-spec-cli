@@ -61,7 +61,7 @@ describe("matchFilter", () => {
   test("plain text = exact match (not substring)", () => {
     expect(matchFilter("me", "me")).toBe(true);
     expect(matchFilter("me", "topCommenters")).toBe(false); // would pass matchGlob
-    expect(matchFilter("ME", "me")).toBe(true);             // case-insensitive
+    expect(matchFilter("ME", "me")).toBe(true); // case-insensitive
     expect(matchFilter("getPet", "getPetById")).toBe(false);
   });
 
@@ -127,7 +127,8 @@ const ALL_OPS_OPENAPI = [
 function applyOpFilter(ops, allowed, disabled) {
   let result = [...ops];
   if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchFilter(p, op.id)));
-  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.id)));
+  if (disabled?.length)
+    result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.id)));
   return result;
 }
 
@@ -163,7 +164,8 @@ const ALL_OPS_GQL = [
 function applyGqlFilter(ops, allowed, disabled) {
   let result = [...ops];
   if (allowed?.length) result = result.filter((op) => allowed.some((p) => matchFilter(p, op.name)));
-  if (disabled?.length) result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.name)));
+  if (disabled?.length)
+    result = result.filter((op) => !disabled.some((p) => matchFilter(p, op.name)));
   return result;
 }
 

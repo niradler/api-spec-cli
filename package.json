@@ -7,7 +7,16 @@
     "spec": "bin/spec.js"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "format": "prettier --write \"src/**/*.js\" \"test/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\"",
+    "release": "bash release.sh"
+  },
+  "prettier": {
+    "semi": true,
+    "singleQuote": false,
+    "printWidth": 100,
+    "trailingComma": "es5"
   },
   "files": [
     "bin/",
@@ -37,5 +46,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
     "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
   }
 }

@@ -216,6 +216,62 @@ Use `grep` for search (substring) — `--allow-tool` / `--disable-tool` for prec
 
 ---
 
+## OAuth / Authentication
+
+MCP HTTP and SSE servers that require OAuth 2.1 are handled automatically. spec-cli detects the 401 on `spec add` and runs the flow before returning.
+
+Two modes depending on whether the server supports Dynamic Client Registration (DCR):
+
+- **DCR-enabled servers** (e.g. self-hosted with Cloudflare workers-oauth-provider, Stytch, Curity) — no flags needed, browser opens automatically
+- **Pre-registered-only servers** (e.g. GitHub) — pass `--oauth-client-id` with your app's client ID
+
+### Interactive (browser) — default
+
+```bash
+# DCR-enabled server: fully automatic
+spec add myserver --mcp-http https://...
+
+# GitHub (no DCR) — create an OAuth App at github.com/settings/developers first
+# Set callback URL to http://127.0.0.1:8090/callback
+spec add github --mcp-http https://api.githubcopilot.com/mcp/ \
+  --oauth-client-id <your-github-app-client-id> \
+  --oauth-callback-port 8090
+```
+
+### Headless / device flow
+
+```bash
+spec add myserver --mcp-http https://... --oauth-flow device
+# Prints a URL to stderr — open in any browser to authorize
+```
+
+### Machine / CI (client credentials)
+
+```bash
+spec add myserver --mcp-http https://... \
+  --oauth-client-id <id> --oauth-client-secret <secret>
+```
+
+### Re-authenticate
+
+```bash
+spec auth myserver           # Re-run the OAuth flow
+spec auth myserver --revoke  # Clear stored token only
+```
+
+Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`.
+
+### OAuth flags
+
+| Flag | Description |
+| --- | --- |
+| `--oauth-client-id <id>` | Skip DCR — use a pre-registered OAuth app client ID |
+| `--oauth-client-secret <secret>` | Use client credentials flow (machine/CI) |
+| `--oauth-callback-port <port>` | Fixed callback port (required for apps with exact redirect URL match, e.g. GitHub) |
+| `--oauth-flow device` | Force device authorization flow (headless/SSH) |
+
+---
+
 ## Config
 
 Persistent config stored in `.spec-cli/config.json` (lowest priority — overridden by registry entry config and call-time flags).
@@ -279,4 +335,9 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 |---|---|
 | `~/spec-cli-config/registry.json` | Global named registry |
 | `~/spec-cli-config/cache/<name>.json` | Cached spec per registered entry |
+| `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
+
+## Planned
+
+- `spec import <file>` — bulk import servers from VS Code `mcp.json` or Claude Desktop config format

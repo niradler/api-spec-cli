@@ -5,8 +5,12 @@ import { tmpdir } from "os";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 // Use a temp dir for the registry during tests
@@ -19,18 +23,33 @@ function ensureDir(dir) {
 }
 
 // Synchronous factory — avoids async deadlock when multiple test workers run in parallel
+const EMPTY_REGISTRY = () => ({ mcp: {}, openapi: {}, graphql: {} });
+
+function allEntriesFromRegistry(registry) {
+  const entries = [];
+  for (const section of ["mcp", "openapi", "graphql"]) {
+    for (const [name, entry] of Object.entries(registry[section] || {})) {
+      entries.push({ ...entry, name, _section: section });
+    }
+  }
+  return entries;
+}
+
 mock.module("../src/registry.js", () => ({
   getRegistry: () => {
-    if (!existsSync(REGISTRY_FILE)) return [];
+    if (!existsSync(REGISTRY_FILE)) return EMPTY_REGISTRY();
     return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
   },
-  saveRegistry: (entries) => {
+  saveRegistry: (registry) => {
     ensureDir(testRegistryDir);
-    writeFileSync(REGISTRY_FILE, JSON.stringify(entries, null, 2));
+    writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
   },
+  allEntries: (registry) => allEntriesFromRegistry(registry),
   getEntry: (name) => {
-    const registry = existsSync(REGISTRY_FILE) ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")) : [];
-    const entry = registry.find((e) => e.name === name);
+    const registry = existsSync(REGISTRY_FILE)
+      ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"))
+      : EMPTY_REGISTRY();
+    const entry = allEntriesFromRegistry(registry).find((e) => e.name === name);
     if (!entry) throw new Error(`No spec named '${name}'.`);
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
     return entry;
@@ -70,12 +89,18 @@ describe("spec add", () => {
     await addCmd(["myapi", "--mcp-http", "https://example.com/mcp", "--description", "Test API"]);
     expect(captured.ok).toBe(true);
     expect(captured.name).toBe("myapi");
-    expect(captured.type).toBe("mcp");
-    expect(captured.transport).toBe("streamable-http");
+    expect(captured.section).toBe("mcp");
+    expect(captured.type).toBe("http");
   });
 
   test("adds an OpenAPI entry", async () => {
-    await addCmd(["pets", "--openapi", "https://petstore.com/openapi.json", "--base-url", "https://petstore.com/api"]);
+    await addCmd([
+      "pets",
+      "--openapi",
+      "https://petstore.com/openapi.json",
+      "--base-url",
+      "https://petstore.com/api",
+    ]);
     expect(captured.ok).toBe(true);
     expect(captured.name).toBe("pets");
     expect(captured.type).toBe("openapi");
@@ -90,7 +115,7 @@ describe("spec add", () => {
   test("adds a stdio MCP entry with env vars", async () => {
     await addCmd(["fs", "--mcp-stdio", "npx -y server /tmp", "--env", "SECRET=abc"]);
     expect(captured.ok).toBe(true);
-    expect(captured.transport).toBe("stdio");
+    expect(captured.type).toBe("stdio");
   });
 
   test("adds a stdio MCP entry with --cwd", async () => {
@@ -98,51 +123,66 @@ describe("spec add", () => {
     expect(captured.ok).toBe(true);
     // Verify cwd is stored in registry
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "fs2");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "fs2");
     expect(entry.cwd).toBe("/my/project");
   });
 
   test("stores allowedTools and disabledTools for MCP entry", async () => {
     await addCmd([
-      "filtered", "--mcp-http", "https://example.com/mcp",
-      "--allow-tool", "read_*",
-      "--allow-tool", "list_*",
-      "--disable-tool", "delete_*",
+      "filtered",
+      "--mcp-http",
+      "https://example.com/mcp",
+      "--allow-tool",
+      "read_*",
+      "--allow-tool",
+      "list_*",
+      "--disable-tool",
+      "delete_*",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filtered");
-    expect(entry.config.allowedTools).toEqual(["read_*", "list_*"]);
-    expect(entry.config.disabledTools).toEqual(["delete_*"]);
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filtered");
+    expect(entry.allowedTools).toEqual(["read_*", "list_*"]);
+    expect(entry.disabledTools).toEqual(["delete_*"]);
   });
 
   test("stores allowedTools and disabledTools for OpenAPI entry", async () => {
     await addCmd([
-      "filteredapi", "--openapi", "https://example.com/openapi.json",
-      "--allow-tool", "get*",
-      "--disable-tool", "delete*",
+      "filteredapi",
+      "--openapi",
+      "https://example.com/openapi.json",
+      "--allow-tool",
+      "get*",
+      "--disable-tool",
+      "delete*",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filteredapi");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredapi");
     expect(entry.config.allowedTools).toEqual(["get*"]);
     expect(entry.config.disabledTools).toEqual(["delete*"]);
   });
 
   test("stores allowedTools for GraphQL entry", async () => {
     await addCmd([
-      "filteredgql", "--graphql", "https://example.com/graphql",
-      "--allow-tool", "me",
-      "--allow-tool", "publication",
+      "filteredgql",
+      "--graphql",
+      "https://example.com/graphql",
+      "--allow-tool",
+      "me",
+      "--allow-tool",
+      "publication",
     ]);
     expect(captured.ok).toBe(true);
     const { getRegistry } = await import("../src/registry.js");
-    const entry = getRegistry().find((e) => e.name === "filteredgql");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredgql");
     expect(entry.config.allowedTools).toEqual(["me", "publication"]);
   });
 
   test("rejects invalid spec name (path chars)", async () => {
-    await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("letters, numbers");
+    await expect(addCmd(["bad/name", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow(
+      "letters, numbers"
+    );
   });
 
   test("rejects --mcp-stdio with empty command", async () => {
@@ -152,11 +192,15 @@ describe("spec add", () => {
   test("rejects duplicate names", async () => {
     await addCmd(["myapi", "--mcp-http", "https://example.com/mcp"]);
     captured = null;
-    await expect(addCmd(["myapi", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow("already exists");
+    await expect(addCmd(["myapi", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow(
+      "already exists"
+    );
   });
 
   test("rejects missing source flag", async () => {
-    await expect(addCmd(["myapi", "--description", "no source"])).rejects.toThrow("Specify a source");
+    await expect(addCmd(["myapi", "--description", "no source"])).rejects.toThrow(
+      "Specify a source"
+    );
   });
 
   test("rejects missing name", async () => {
@@ -175,7 +219,7 @@ describe("spec specs", () => {
     await specsCmd([]);
     expect(captured.specs).toHaveLength(2);
     expect(captured.specs[0].name).toBe("agno");
-    expect(captured.specs[0].type).toBe("mcp");
+    expect(captured.specs[0].type).toBe("http");
     expect(captured.specs[0].enabled).toBe(true);
     // compact: no config, no source
     expect(captured.specs[0].config).toBeUndefined();
@@ -183,8 +227,9 @@ describe("spec specs", () => {
 
   test("--compact false shows full entries", async () => {
     await specsCmd(["--compact", "false"]);
-    expect(captured.specs[0].config).toBeDefined();
+    expect(captured.specs[0].url).toBe("https://docs.agno.com/mcp");
     expect(captured.specs[1].source).toBe("https://petstore.com/openapi.json");
+    expect(captured.specs[1].config).toBeDefined();
   });
 });
 

@@ -2,6 +2,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SpecCliOAuthProvider } from "./oauth/provider.js";
+import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+import { loadTokenFile } from "./oauth/tokens.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
@@ -18,8 +21,8 @@ async function connect(spec) {
   const client = new Client({ name: "spec-cli", version: "1.0.0" });
 
   let transport;
-  if (spec.transport === "stdio") {
-    const rawEnv = spec.config?.env || {};
+  if (spec.type === "stdio") {
+    const rawEnv = spec.env || {};
     const expandedEnv = Object.fromEntries(
       Object.entries(rawEnv).map(([k, v]) => [k, expandEnv(v)])
     );
@@ -29,18 +32,40 @@ async function connect(spec) {
       env: Object.keys(expandedEnv).length > 0 ? { ...process.env, ...expandedEnv } : undefined,
       cwd: spec.cwd,
     });
-  } else if (spec.transport === "sse") {
-    const h = spec.config?.headers;
+  } else if (spec.type === "sse") {
+    const h = spec.headers;
+    let authProvider;
+    // spec.name is only set for registry entries; inline connections (--mcp-sse <url>)
+    // have no token storage location, so no OAuth provider is created for them.
+    if (spec.name && !h?.Authorization) {
+      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      authProvider =
+        spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
+          ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
+          : new SpecCliOAuthProvider(spec.name, spec);
+    }
     transport = new SSEClientTransport(new URL(spec.url), {
+      authProvider,
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
-  } else if (spec.transport === "streamable-http") {
-    const h = spec.config?.headers;
+  } else if (spec.type === "http") {
+    const h = spec.headers;
+    let authProvider;
+    // spec.name is only set for registry entries; inline connections (--mcp-http <url>)
+    // have no token storage location, so no OAuth provider is created for them.
+    if (spec.name && !h?.Authorization) {
+      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      authProvider =
+        spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
+          ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
+          : new SpecCliOAuthProvider(spec.name, spec);
+    }
     transport = new StreamableHTTPClientTransport(new URL(spec.url), {
+      authProvider,
       requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else {
-    throw new Error(`Unknown MCP transport: ${spec.transport}. Supported: stdio, sse, streamable-http`);
+    throw new Error(`Unknown MCP type: ${spec.type}. Supported: stdio, sse, http`);
   }
 
   await client.connect(transport);

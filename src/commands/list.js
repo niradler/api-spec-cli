@@ -60,15 +60,13 @@ export async function listOperations(args) {
   }
 
   if (filter) {
-    operations = operations.filter((op) =>
-      JSON.stringify(op).toLowerCase().includes(filter)
-    );
+    operations = operations.filter((op) => JSON.stringify(op).toLowerCase().includes(filter));
   }
 
   const total = operations.length;
 
   if (offset > 0) operations = operations.slice(offset);
-  if (limit > 0)  operations = operations.slice(0, limit);
+  if (limit > 0) operations = operations.slice(0, limit);
 
   out({
     type: spec.type,

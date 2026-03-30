@@ -4,8 +4,12 @@ import { resolve } from "path";
 
 let captured;
 mock.module("../src/output.js", () => ({
-  out: (data) => { captured = data; },
-  err: (msg) => { captured = { error: msg }; },
+  out: (data) => {
+    captured = data;
+  },
+  err: (msg) => {
+    captured = { error: msg };
+  },
 }));
 
 const fixturesDir = resolve(import.meta.dir, "fixtures");
@@ -17,18 +21,20 @@ function mockOpenAPI() {
     version: raw.openapi,
     title: raw.info.title,
     operations: Object.entries(raw.paths).flatMap(([path, methods]) =>
-      Object.entries(methods).filter(([m]) => !m.startsWith("x-") && m !== "parameters").map(([method, op]) => ({
-        id: op.operationId,
-        method: method.toUpperCase(),
-        path,
-        summary: op.summary || null,
-        description: op.description || null,
-        parameters: op.parameters || [],
-        requestBody: op.requestBody || null,
-        responses: op.responses || {},
-        tags: op.tags || [],
-        deprecated: op.deprecated || false,
-      }))
+      Object.entries(methods)
+        .filter(([m]) => !m.startsWith("x-") && m !== "parameters")
+        .map(([method, op]) => ({
+          id: op.operationId,
+          method: method.toUpperCase(),
+          path,
+          summary: op.summary || null,
+          description: op.description || null,
+          parameters: op.parameters || [],
+          requestBody: op.requestBody || null,
+          responses: op.responses || {},
+          tags: op.tags || [],
+          deprecated: op.deprecated || false,
+        }))
     ),
     raw,
     components: raw.components,
