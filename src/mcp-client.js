@@ -5,7 +5,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SpecCliOAuthProvider } from "./oauth/provider.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import { getClientSecret } from "./oauth/tokens.js";
-import { expandSecrets, expandSecretsMap, envHeaderOverrides, envUrlOverride } from "./secrets.js";
+import {
+  expandSecrets,
+  expandSecretsMap,
+  envHeaderOverrides,
+  envUrlOverride,
+  mergeHeaders,
+} from "./secrets.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
@@ -30,7 +36,7 @@ async function connect(spec) {
       cwd: spec.cwd,
     });
   } else if (spec.type === "sse") {
-    const h = expandSecretsMap({ ...(spec.headers || {}), ...envHeaderOverrides() });
+    const h = expandSecretsMap(mergeHeaders(spec.headers, envHeaderOverrides()));
     const url = envUrlOverride() ?? spec.url;
     let authProvider;
     const hasAuthSse = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
@@ -46,7 +52,7 @@ async function connect(spec) {
       requestInit: Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else if (spec.type === "http") {
-    const h = expandSecretsMap({ ...(spec.headers || {}), ...envHeaderOverrides() });
+    const h = expandSecretsMap(mergeHeaders(spec.headers, envHeaderOverrides()));
     const url = envUrlOverride() ?? spec.url;
     let authProvider;
     const hasAuthHttp = Object.keys(h).some((k) => k.toLowerCase() === "authorization");

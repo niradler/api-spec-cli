@@ -10,14 +10,6 @@ import {
   mergeHeaders,
 } from "./secrets.js";
 
-function applySpecUrlOverride(spec) {
-  const url = envUrlOverride();
-  if (!url) return;
-  if (spec.type === "graphql") {
-    spec.endpoint = url;
-  }
-}
-
 export async function resolveSpec(flags) {
   if (flags.spec) {
     const entry = getEntry(flags.spec);
@@ -26,14 +18,12 @@ export async function resolveSpec(flags) {
       spec = await fetchSpec(entry);
       saveCachedSpec(flags.spec, spec);
     }
-    applySpecUrlOverride(spec);
     return { spec, entry };
   }
 
   const inlineEntry = inlineEntryFromFlags(flags);
   if (inlineEntry) {
     const spec = await fetchSpec(inlineEntry);
-    applySpecUrlOverride(spec);
     return { spec, entry: inlineEntry };
   }
 
@@ -54,7 +44,9 @@ export function resolveConfig(flags, entry) {
 
   const rawAuth = flags.auth || entryConfig.auth || global.auth;
   const auth = rawAuth ? expandSecrets(rawAuth) : rawAuth;
-  const baseUrl = flags["base-url"] || entryConfig.baseUrl || global.baseUrl;
+  const isGraphql = entry?.type === "graphql" || entry?._section === "graphql";
+  const envUrl = isGraphql ? envUrlOverride() : undefined;
+  const baseUrl = flags["base-url"] || envUrl || entryConfig.baseUrl || global.baseUrl;
 
   const mergedHeaders = mergeHeaders(
     global.headers,

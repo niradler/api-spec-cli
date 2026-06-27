@@ -212,4 +212,23 @@ describe("resolveConfig integration", () => {
     const flagVal = configWithFlag.headers["X-Tenant"] ?? configWithFlag.headers["x-tenant"];
     expect(flagVal).toBe("flag-tenant");
   });
+
+  test("graphql SPEC_URL overrides registry baseUrl but yields to --base-url flag", async () => {
+    process.env.SPEC_URL = "https://env.example/gql";
+    const { resolveConfig } = await import("../src/resolve.js?real");
+    const entry = { type: "graphql", config: { baseUrl: "https://registry.example/gql" } };
+
+    expect(resolveConfig({}, entry).baseUrl).toBe("https://env.example/gql");
+    expect(resolveConfig({ "base-url": "https://flag.example/gql" }, entry).baseUrl).toBe(
+      "https://flag.example/gql"
+    );
+  });
+
+  test("SPEC_URL does not affect openapi baseUrl", async () => {
+    process.env.SPEC_URL = "https://env.example/gql";
+    const { resolveConfig } = await import("../src/resolve.js?real");
+    const entry = { type: "openapi", config: { baseUrl: "https://registry.example/api" } };
+
+    expect(resolveConfig({}, entry).baseUrl).toBe("https://registry.example/api");
+  });
 });
