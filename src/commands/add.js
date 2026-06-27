@@ -1,5 +1,5 @@
 import { parseArgs, parseKV } from "../args.js";
-import { getRegistry, saveRegistry } from "../registry.js";
+import { getRegistry, saveRegistry, removeCachedSpec } from "../registry.js";
 import { out } from "../output.js";
 import { saveTokenFile } from "../oauth/tokens.js";
 import { runOAuthFlow } from "../oauth/auth-flow.js";
@@ -17,10 +17,11 @@ export async function addCmd(args) {
 
   const registry = getRegistry();
 
-  // Check for name collision across all sections
-  for (const section of ["mcp", "openapi", "graphql"]) {
-    if (registry[section]?.[name]) {
-      throw new Error(`Spec '${name}' already exists. Run 'spec remove ${name}' first.`);
+  let overwritten = false;
+  for (const existingSection of ["mcp", "openapi", "graphql"]) {
+    if (registry[existingSection]?.[name]) {
+      delete registry[existingSection][name];
+      overwritten = true;
     }
   }
 
@@ -127,6 +128,7 @@ export async function addCmd(args) {
 
   registry[section][name] = entry;
   saveRegistry(registry);
+  if (overwritten) removeCachedSpec(name);
 
   // Store client secret in token file (not registry) — it's sensitive
   if (oauthClientSecret) {
@@ -142,7 +144,7 @@ export async function addCmd(args) {
     await probeAndAuth({ ...entry, name, _section: "mcp" });
   }
 
-  out({ ok: true, name, section, type: entry.type });
+  out({ ok: true, name, section, type: entry.type, ...(overwritten ? { overwritten: true } : {}) });
 }
 
 async function probeAndAuth(entry) {

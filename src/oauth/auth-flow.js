@@ -4,7 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import { SpecCliOAuthProvider } from "./provider.js";
-import { loadTokenFile } from "./tokens.js";
+import { getClientSecret } from "./tokens.js";
 
 /**
  * Run the full OAuth flow for a named MCP HTTP/SSE entry.
@@ -14,7 +14,7 @@ import { loadTokenFile } from "./tokens.js";
  */
 export async function runOAuthFlow(name, entry) {
   const TransportClass = entry.type === "sse" ? SSEClientTransport : StreamableHTTPClientTransport;
-  const clientSecret = loadTokenFile(name).clientSecret;
+  const clientSecret = getClientSecret(name);
 
   // Only use client credentials grant when explicitly requested.
   // Having a clientSecret does NOT imply client_credentials — for most OAuth apps

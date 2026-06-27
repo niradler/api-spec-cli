@@ -1,6 +1,7 @@
 import { out } from "../output.js";
 import { parseArgs } from "../args.js";
 import { resolveSpec } from "../resolve.js";
+import { getUsage } from "../usage.js";
 
 export async function listOperations(args) {
   const opts = parseArgs(args);
@@ -13,6 +14,7 @@ export async function listOperations(args) {
   const limit = parseInt(flags.limit) || 0;
   const offset = parseInt(flags.offset) || 0;
   const tag = flags.tag?.toLowerCase();
+  const top = parseInt(flags.top) || 0;
 
   let operations;
 
@@ -65,8 +67,17 @@ export async function listOperations(args) {
 
   const total = operations.length;
 
-  if (offset > 0) operations = operations.slice(offset);
-  if (limit > 0) operations = operations.slice(0, limit);
+  if (top > 0) {
+    const usageMap = flags.spec ? getUsage(flags.spec) : {};
+    operations = operations
+      .map((op) => ({ op, count: usageMap[op.id]?.count ?? 0 }))
+      .sort((a, b) => b.count - a.count)
+      .map(({ op }) => op)
+      .slice(0, top);
+  } else {
+    if (offset > 0) operations = operations.slice(offset);
+    if (limit > 0) operations = operations.slice(0, limit);
+  }
 
   out({
     type: spec.type,

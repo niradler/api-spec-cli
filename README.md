@@ -174,6 +174,49 @@ spec disable <name>   # Disable without removing
 spec refresh <name>   # Force re-fetch and update cache
 ```
 
+`spec add` is an upsert — re-adding an existing name overwrites the entry (and clears its stale cache), since there's no separate `update` command. The response includes `"overwritten": true` when an existing entry was replaced.
+
+## Usage Ranking
+
+`spec` records which operations/tools you call so agents can surface the ones that matter:
+
+```bash
+spec list --spec petstore --top 5   # the 5 most-called operations first
+spec usage                          # recorded usage across all specs
+spec usage petstore                 # ranked operations for one spec
+```
+
+Counts are stored locally in `~/spec-cli-config/usage.json`. `--top` applies after `--filter`/`--tag` and overrides `--limit`. Set `SPEC_NO_USAGE=1` to disable tracking.
+
+## Secrets & Environment Overrides
+
+Stored values can reference environment variables instead of holding raw secrets. Use `${VAR}` in `--auth` or header values — it's expanded from the environment at call time, never stored expanded:
+
+```bash
+spec add gh --mcp-http https://api.example.com/mcp --header "Authorization=Bearer ${GH_TOKEN}"
+spec config set auth '${API_TOKEN}'
+```
+
+A `.env` file in the working directory is auto-loaded on startup (real environment variables take precedence; set `SPEC_NO_DOTENV=1` to disable).
+
+Two environment variables override a registered spec's connection per call — useful in CI:
+
+```bash
+SPEC_URL=https://staging.example.com/mcp spec call --spec gh some_tool   # override MCP/GraphQL endpoint
+SPEC_HEADER_X_TENANT=acme spec list --spec gh                            # add/override a header
+```
+
+`SPEC_HEADER_<NAME>` maps underscores to dashes (`SPEC_HEADER_X_TENANT` → `X-Tenant`). Precedence: call-time flags > env override > registry entry > project config.
+
+## Agent Skill
+
+Install a ready-made skill that teaches an agent the explore-then-call workflow:
+
+```bash
+spec skill install   # copy SKILL.md into ~/.claude/skills/api-spec-cli/
+spec skill path      # print the bundled SKILL.md location
+```
+
 ---
 
 ## spec add options
@@ -259,7 +302,7 @@ spec auth myserver           # Re-run the OAuth flow
 spec auth myserver --revoke  # Clear stored token only
 ```
 
-Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`.
+Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`. Access tokens are refreshed automatically: when a stored token expires, the refresh token is used and the rotated tokens are persisted, so the next command picks them up without re-authenticating.
 
 ### OAuth flags
 
@@ -301,8 +344,11 @@ JSON by default. Errors go to stderr as `{"error": "message"}` with a non-zero e
 ```bash
 spec list --spec petstore --format text
 spec show --spec petstore getPetById --format yaml
+spec list --spec petstore --format toon    # Token-Oriented Object Notation (densest)
 spec list --spec petstore --format=json    # equals syntax also works
 ```
+
+`toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Errors are always JSON regardless of format.
 
 ## Token Efficiency
 
@@ -336,6 +382,7 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 | `~/spec-cli-config/registry.json` | Global named registry |
 | `~/spec-cli-config/cache/<name>.json` | Cached spec per registered entry |
 | `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
+| `~/spec-cli-config/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
 
 ## Planned

@@ -1,6 +1,7 @@
 import { homedir } from "os";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { expandSecrets } from "../secrets.js";
 
 let TOKEN_DIR = join(homedir(), "spec-cli-config", "tokens");
 
@@ -10,6 +11,11 @@ export function setTokenDir(dir) {
 
 function tokenPath(name) {
   return join(TOKEN_DIR, `${name}.json`);
+}
+
+export function getClientSecret(name) {
+  const secret = loadTokenFile(name).clientSecret;
+  return secret ? expandSecrets(secret) : secret;
 }
 
 export function loadTokenFile(name) {

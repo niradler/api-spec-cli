@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { exec } from "child_process";
 import { randomUUID } from "crypto";
-import { loadTokenFile, saveTokenFile } from "./tokens.js";
+import { loadTokenFile, saveTokenFile, getClientSecret } from "./tokens.js";
 
 function openBrowser(url) {
   const cmd =
@@ -58,8 +58,7 @@ export class SpecCliOAuthProvider {
 
   get redirectUrl() {
     if (this.#flow === "device") return undefined;
-    if (!this.#redirectPort) throw new Error("Call prepareRedirect() before accessing redirectUrl");
-    return `http://127.0.0.1:${this.#redirectPort}/callback`;
+    return `http://127.0.0.1:${this.#redirectPort || 0}/callback`;
   }
 
   get clientMetadata() {
@@ -91,7 +90,7 @@ export class SpecCliOAuthProvider {
     const stored = loadTokenFile(this.#name).clientInfo;
     if (stored) return stored;
     if (this.#clientId) {
-      const clientSecret = loadTokenFile(this.#name).clientSecret;
+      const clientSecret = getClientSecret(this.#name);
       return clientSecret
         ? { client_id: this.#clientId, client_secret: clientSecret }
         : { client_id: this.#clientId };

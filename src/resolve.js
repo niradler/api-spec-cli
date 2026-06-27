@@ -2,17 +2,17 @@ import { getEntry, getCachedSpec, saveCachedSpec } from "./registry.js";
 import { fetchSpec, inlineEntryFromFlags } from "./commands/fetch.js";
 import { getConfig } from "./store.js";
 import { parseKV } from "./args.js";
+import {
+  expandSecrets,
+  expandSecretsMap,
+  envHeaderOverrides,
+  envUrlOverride,
+  mergeHeaders,
+} from "./secrets.js";
 
-/**
- * Resolve the active spec from flags.
- * Priority:
- *   1. --spec <name>  → registry (auto-caches on first use)
- *   2. Inline flags   → ad-hoc, no caching
- *   3. Error          → no spec source given
- */
 export async function resolveSpec(flags) {
   if (flags.spec) {
-    const entry = getEntry(flags.spec); // throws if missing or disabled
+    const entry = getEntry(flags.spec);
     let spec = getCachedSpec(flags.spec);
     if (!spec) {
       spec = await fetchSpec(entry);
@@ -37,23 +37,25 @@ export async function resolveSpec(flags) {
   );
 }
 
-/**
- * Build the effective config for a command.
- * Precedence (highest → lowest):
- *   1. Call-time flags: --auth, --base-url, --header k=v
- *   2. Registry entry config
- *   3. .spec-cli/config.json
- */
 export function resolveConfig(flags, entry) {
   const global = getConfig();
   const entryConfig = entry?.config || {};
   const callHeaders = parseKV(flags.header);
 
-  const auth = flags.auth || entryConfig.auth || global.auth;
-  const baseUrl = flags["base-url"] || entryConfig.baseUrl || global.baseUrl;
-  const headers = { ...global.headers, ...(entryConfig.headers || {}), ...callHeaders };
+  const rawAuth = flags.auth || entryConfig.auth || global.auth;
+  const auth = rawAuth ? expandSecrets(rawAuth) : rawAuth;
+  const isGraphql = entry?.type === "graphql" || entry?._section === "graphql";
+  const envUrl = isGraphql ? envUrlOverride() : undefined;
+  const baseUrl = flags["base-url"] || envUrl || entryConfig.baseUrl || global.baseUrl;
 
-  // Apply auth as Authorization header if not already there (case-insensitive check)
+  const mergedHeaders = mergeHeaders(
+    global.headers,
+    entryConfig.headers,
+    envHeaderOverrides(),
+    callHeaders
+  );
+  const headers = expandSecretsMap(mergedHeaders);
+
   const hasAuthHeader = Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
   if (auth && !hasAuthHeader) {
     headers["Authorization"] =

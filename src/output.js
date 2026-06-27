@@ -1,9 +1,10 @@
 import YAML from "yaml";
+import { encode } from "@toon-format/toon";
 
 let outputFormat = "json";
 
 export function setFormat(format) {
-  if (format && ["json", "text", "yaml"].includes(format)) {
+  if (format && ["json", "text", "yaml", "toon"].includes(format)) {
     outputFormat = format;
   }
 }
@@ -12,6 +13,9 @@ export function out(data) {
   switch (outputFormat) {
     case "yaml":
       console.log(YAML.stringify(data).trimEnd());
+      break;
+    case "toon":
+      console.log(encode(data).trimEnd());
       break;
     case "text":
       console.log(formatText(data));

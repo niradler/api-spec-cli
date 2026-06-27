@@ -4,17 +4,20 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SpecCliOAuthProvider } from "./oauth/provider.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
-import { loadTokenFile } from "./oauth/tokens.js";
+import { getClientSecret } from "./oauth/tokens.js";
+import {
+  expandSecrets,
+  expandSecretsMap,
+  envHeaderOverrides,
+  envUrlOverride,
+  mergeHeaders,
+} from "./secrets.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
 
-// Expand ${VAR} placeholders from process.env at call time
 function expandEnv(val) {
-  return val.replace(/\$\{([^}]+)\}/g, (_, name) => {
-    if (!(name in process.env)) throw new Error(`Environment variable not set: ${name}`);
-    return process.env[name];
-  });
+  return expandSecrets(val);
 }
 
 async function connect(spec) {
@@ -33,36 +36,36 @@ async function connect(spec) {
       cwd: spec.cwd,
     });
   } else if (spec.type === "sse") {
-    const h = spec.headers;
+    const h = expandSecretsMap(mergeHeaders(spec.headers, envHeaderOverrides()));
+    const url = envUrlOverride() ?? spec.url;
     let authProvider;
-    // spec.name is only set for registry entries; inline connections (--mcp-sse <url>)
-    // have no token storage location, so no OAuth provider is created for them.
-    if (spec.name && !h?.Authorization) {
-      const clientSecret = loadTokenFile(spec.name).clientSecret;
+    const hasAuthSse = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
+    if (spec.name && !hasAuthSse) {
+      const clientSecret = getClientSecret(spec.name);
       authProvider =
         spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
           ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
           : new SpecCliOAuthProvider(spec.name, spec);
     }
-    transport = new SSEClientTransport(new URL(spec.url), {
+    transport = new SSEClientTransport(new URL(url), {
       authProvider,
-      requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
+      requestInit: Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else if (spec.type === "http") {
-    const h = spec.headers;
+    const h = expandSecretsMap(mergeHeaders(spec.headers, envHeaderOverrides()));
+    const url = envUrlOverride() ?? spec.url;
     let authProvider;
-    // spec.name is only set for registry entries; inline connections (--mcp-http <url>)
-    // have no token storage location, so no OAuth provider is created for them.
-    if (spec.name && !h?.Authorization) {
-      const clientSecret = loadTokenFile(spec.name).clientSecret;
+    const hasAuthHttp = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
+    if (spec.name && !hasAuthHttp) {
+      const clientSecret = getClientSecret(spec.name);
       authProvider =
         spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
           ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
           : new SpecCliOAuthProvider(spec.name, spec);
     }
-    transport = new StreamableHTTPClientTransport(new URL(spec.url), {
+    transport = new StreamableHTTPClientTransport(new URL(url), {
       authProvider,
-      requestInit: h && Object.keys(h).length > 0 ? { headers: h } : undefined,
+      requestInit: Object.keys(h).length > 0 ? { headers: h } : undefined,
     });
   } else {
     throw new Error(`Unknown MCP type: ${spec.type}. Supported: stdio, sse, http`);

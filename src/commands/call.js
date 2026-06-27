@@ -3,6 +3,7 @@ import { out } from "../output.js";
 import { parseArgs, parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
 import { resolveSpec, resolveConfig } from "../resolve.js";
+import { recordUsage } from "../usage.js";
 
 const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
 
@@ -60,6 +61,7 @@ async function callMCP(spec, entry, target, flags) {
     // Normalize MCP result: expose isError and content at the top level
     const isError = result.isError === true;
     out({ tool: tool.name, arguments: toolArgs, isError, content: result.content, result });
+    recordUsage(flags.spec, tool.name);
     if (isError) process.exit(1);
   } finally {
     await client.close();
@@ -122,6 +124,7 @@ async function callOpenAPI(spec, config, target, flags) {
     headers: Object.fromEntries(res.headers.entries()),
     body: responseBody,
   });
+  recordUsage(flags.spec, op.id);
 }
 
 async function callGraphQL(spec, config, target, flags) {
@@ -177,6 +180,7 @@ async function callGraphQL(spec, config, target, flags) {
     data: responseBody?.data || null,
     errors: responseBody?.errors || null,
   });
+  recordUsage(flags.spec, op.name);
 }
 
 function buildGraphQLQuery(op, types) {
