@@ -4,7 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SpecCliOAuthProvider } from "./oauth/provider.js";
 import { ClientCredentialsProvider } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
-import { loadTokenFile } from "./oauth/tokens.js";
+import { getClientSecret } from "./oauth/tokens.js";
 import { expandSecrets, expandSecretsMap, envHeaderOverrides, envUrlOverride } from "./secrets.js";
 
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
@@ -35,7 +35,7 @@ async function connect(spec) {
     let authProvider;
     const hasAuthSse = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
     if (spec.name && !hasAuthSse) {
-      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      const clientSecret = getClientSecret(spec.name);
       authProvider =
         spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
           ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })
@@ -51,7 +51,7 @@ async function connect(spec) {
     let authProvider;
     const hasAuthHttp = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
     if (spec.name && !hasAuthHttp) {
-      const clientSecret = loadTokenFile(spec.name).clientSecret;
+      const clientSecret = getClientSecret(spec.name);
       authProvider =
         spec.oauthFlow === "client_credentials" && spec.oauthClientId && clientSecret
           ? new ClientCredentialsProvider({ clientId: spec.oauthClientId, clientSecret })

@@ -2,7 +2,13 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadTokenFile, saveTokenFile, clearTokenFile, setTokenDir } from "../src/oauth/tokens.js";
+import {
+  loadTokenFile,
+  saveTokenFile,
+  clearTokenFile,
+  setTokenDir,
+  getClientSecret,
+} from "../src/oauth/tokens.js";
 
 const TEST_DIR = join(tmpdir(), "spec-cli-test-tokens-" + process.pid);
 
@@ -45,5 +51,22 @@ describe("token file helpers", () => {
     const data = loadTokenFile("myspec");
     expect(data.tokens.access_token).toBe("old");
     expect(data.clientInfo.client_id).toBe("x");
+  });
+
+  test("getClientSecret expands ${VAR} from the environment", () => {
+    process.env.MY_CLIENT_SECRET = "expanded-secret";
+    saveTokenFile("myspec", { clientSecret: "${MY_CLIENT_SECRET}" });
+    expect(getClientSecret("myspec")).toBe("expanded-secret");
+    delete process.env.MY_CLIENT_SECRET;
+  });
+
+  test("getClientSecret returns a literal secret unchanged", () => {
+    saveTokenFile("myspec", { clientSecret: "plain-secret" });
+    expect(getClientSecret("myspec")).toBe("plain-secret");
+  });
+
+  test("getClientSecret returns undefined when no secret is stored", () => {
+    saveTokenFile("myspec", { tokens: { access_token: "x" } });
+    expect(getClientSecret("myspec")).toBeUndefined();
   });
 });

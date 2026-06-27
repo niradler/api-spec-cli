@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { exec } from "child_process";
 import { randomUUID } from "crypto";
-import { loadTokenFile, saveTokenFile } from "./tokens.js";
+import { loadTokenFile, saveTokenFile, getClientSecret } from "./tokens.js";
 
 function openBrowser(url) {
   const cmd =
@@ -90,7 +90,7 @@ export class SpecCliOAuthProvider {
     const stored = loadTokenFile(this.#name).clientInfo;
     if (stored) return stored;
     if (this.#clientId) {
-      const clientSecret = loadTokenFile(this.#name).clientSecret;
+      const clientSecret = getClientSecret(this.#name);
       return clientSecret
         ? { client_id: this.#clientId, client_secret: clientSecret }
         : { client_id: this.#clientId };
