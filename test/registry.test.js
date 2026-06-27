@@ -189,12 +189,14 @@ describe("spec add", () => {
     await expect(addCmd(["fs3", "--mcp-stdio", "   "])).rejects.toThrow("non-empty command");
   });
 
-  test("rejects duplicate names", async () => {
-    await addCmd(["myapi", "--mcp-http", "https://example.com/mcp"]);
+  test("overwrites an existing entry as an upsert", async () => {
+    await addCmd(["myapi", "--openapi", "https://example.com/openapi.json"]);
     captured = null;
-    await expect(addCmd(["myapi", "--mcp-http", "https://example.com/mcp"])).rejects.toThrow(
-      "already exists"
-    );
+    await addCmd(["myapi", "--openapi", "https://example.com/v2.json", "--description", "v2"]);
+    expect(captured.ok).toBe(true);
+    expect(captured.overwritten).toBe(true);
+    const registry = JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
+    expect(registry.openapi.myapi.source).toBe("https://example.com/v2.json");
   });
 
   test("rejects missing source flag", async () => {

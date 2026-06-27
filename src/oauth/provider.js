@@ -58,8 +58,7 @@ export class SpecCliOAuthProvider {
 
   get redirectUrl() {
     if (this.#flow === "device") return undefined;
-    if (!this.#redirectPort) throw new Error("Call prepareRedirect() before accessing redirectUrl");
-    return `http://127.0.0.1:${this.#redirectPort}/callback`;
+    return `http://127.0.0.1:${this.#redirectPort || 0}/callback`;
   }
 
   get clientMetadata() {
