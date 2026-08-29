@@ -1,7 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
   expandSecrets,
   expandSecretsMap,
+  specRequestHeaders,
   envHeaderOverrides,
   envUrlOverride,
   mergeHeaders,
@@ -30,6 +34,33 @@ describe("expandSecrets", () => {
     );
   });
 
+  test("expands env:NAME prefix", () => {
+    process.env.MY_TOKEN = "secret123";
+    expect(expandSecrets("env:MY_TOKEN")).toBe("secret123");
+  });
+
+  test("throws on missing env:NAME", () => {
+    expect(() => expandSecrets("env:MISSING_VAR_XYZ")).toThrow(
+      "Environment variable not set: MISSING_VAR_XYZ"
+    );
+  });
+
+  test("expands file: prefix and strips trailing newline", () => {
+    const dir = join(tmpdir(), `spec-cli-secret-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, "tok.txt");
+    writeFileSync(file, "from-file\n");
+    try {
+      expect(expandSecrets(`file:${file}`)).toBe("from-file");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("throws on missing file:", () => {
+    expect(() => expandSecrets("file:/no/such/secret-file")).toThrow("Secret file not found");
+  });
+
   test("returns plain string unchanged", () => {
     expect(expandSecrets("plain-string")).toBe("plain-string");
   });
@@ -43,6 +74,24 @@ describe("expandSecrets", () => {
   test("returns object input unchanged", () => {
     const obj = { a: 1 };
     expect(expandSecrets(obj)).toBe(obj);
+  });
+});
+
+describe("specRequestHeaders", () => {
+  test("adds Bearer from config.auth", () => {
+    expect(specRequestHeaders({ auth: "tok" })).toEqual({ Authorization: "Bearer tok" });
+  });
+
+  test("keeps existing Authorization header", () => {
+    expect(specRequestHeaders({ auth: "tok", headers: { Authorization: "Basic abc" } })).toEqual({
+      Authorization: "Basic abc",
+    });
+  });
+
+  test("expands env: in auth", () => {
+    process.env.MY_TOKEN = "secret123";
+    expect(specRequestHeaders({ auth: "env:MY_TOKEN" }).Authorization).toBe("Bearer secret123");
+    delete process.env.MY_TOKEN;
   });
 });
 
@@ -230,5 +279,35 @@ describe("resolveConfig integration", () => {
     const entry = { type: "openapi", config: { baseUrl: "https://registry.example/api" } };
 
     expect(resolveConfig({}, entry).baseUrl).toBe("https://registry.example/api");
+  });
+
+  test("--auth-from uses stored access_token as Bearer", async () => {
+    const dir = join(tmpdir(), `spec-cli-auth-from-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    setTokenDir(dir);
+    saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
+    const { resolveConfig } = await import("../src/resolve.js?auth-from");
+    try {
+      const config = resolveConfig({ "auth-from": "github-mcp" }, { config: {} });
+      expect(config.headers.Authorization).toBe("Bearer mcp-access");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("--auth wins over --auth-from", async () => {
+    const dir = join(tmpdir(), `spec-cli-auth-from-win-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    setTokenDir(dir);
+    saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
+    const { resolveConfig } = await import("../src/resolve.js?auth-from-win");
+    try {
+      const config = resolveConfig({ auth: "explicit", "auth-from": "github-mcp" }, { config: {} });
+      expect(config.headers.Authorization).toBe("Bearer explicit");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

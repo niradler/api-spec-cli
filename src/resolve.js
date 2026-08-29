@@ -2,6 +2,7 @@ import { getEntry, getCachedSpec, saveCachedSpec } from "./registry.js";
 import { fetchSpec, inlineEntryFromFlags } from "./commands/fetch.js";
 import { getConfig } from "./store.js";
 import { parseKV } from "./args.js";
+import { loadTokenFile } from "./oauth/tokens.js";
 import {
   expandSecrets,
   expandSecretsMap,
@@ -42,7 +43,16 @@ export function resolveConfig(flags, entry) {
   const entryConfig = entry?.config || {};
   const callHeaders = parseKV(flags.header);
 
-  const rawAuth = flags.auth || entryConfig.auth || global.auth;
+  let rawAuth = flags.auth || entryConfig.auth || global.auth;
+  if (!flags.auth && flags["auth-from"]) {
+    const access = loadTokenFile(flags["auth-from"]).tokens?.access_token;
+    if (!access) {
+      throw new Error(
+        `No access token stored for '${flags["auth-from"]}'. Run 'spec auth ${flags["auth-from"]}' first.`
+      );
+    }
+    rawAuth = access;
+  }
   const auth = rawAuth ? expandSecrets(rawAuth) : rawAuth;
   const isGraphql = entry?.type === "graphql" || entry?._section === "graphql";
   const envUrl = isGraphql ? envUrlOverride() : undefined;

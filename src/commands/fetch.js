@@ -4,6 +4,7 @@ import YAML from "yaml";
 import { parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
 import { matchFilter } from "../glob.js";
+import { specRequestHeaders } from "../secrets.js";
 
 const INTROSPECTION_QUERY = `{
   __schema {
@@ -79,7 +80,7 @@ function applyFilter(items, nameFn, allowed, disabled) {
 export async function fetchSpec(entry) {
   if (entry._section === "mcp") return await loadMCPFromEntry(entry);
   if (entry._section === "graphql") {
-    const spec = await loadGraphQL(entry.source, entry.config?.headers);
+    const spec = await loadGraphQL(entry.source, specRequestHeaders(entry.config));
     return {
       ...spec,
       operations: applyFilter(
@@ -92,7 +93,9 @@ export async function fetchSpec(entry) {
   }
   // openapi
   const isUrl = entry.source?.startsWith("http://") || entry.source?.startsWith("https://");
-  const spec = isUrl ? await loadFromUrl(entry.source, true) : loadFromFile(entry.source);
+  const spec = isUrl
+    ? await loadFromUrl(entry.source, true, specRequestHeaders(entry.config))
+    : loadFromFile(entry.source);
   return {
     ...spec,
     operations: applyFilter(
@@ -159,7 +162,11 @@ export function inlineEntryFromFlags(flags) {
       _section: "graphql",
       type: "graphql",
       source: flags.graphql,
-      config: { headers: parseKV(flags.header), ...filterConfig },
+      config: {
+        headers: parseKV(flags.header),
+        ...(flags.auth ? { auth: flags.auth } : {}),
+        ...filterConfig,
+      },
     };
   }
   if (flags.openapi) {
@@ -170,6 +177,7 @@ export function inlineEntryFromFlags(flags) {
       config: {
         headers: parseKV(flags.header),
         baseUrl: flags["base-url"] || null,
+        ...(flags.auth ? { auth: flags.auth } : {}),
         ...filterConfig,
       },
     };
@@ -206,20 +214,20 @@ async function loadMCPFromEntry(entry) {
   }
 }
 
-async function loadFromUrl(url, skipGraphQLProbe = false) {
+async function loadFromUrl(url, skipGraphQLProbe = false, extraHeaders = {}) {
   const lowerUrl = url.toLowerCase();
   const isLikelyFile =
     lowerUrl.endsWith(".json") || lowerUrl.endsWith(".yaml") || lowerUrl.endsWith(".yml");
 
   if (!isLikelyFile && !skipGraphQLProbe) {
     try {
-      return await loadGraphQL(url);
+      return await loadGraphQL(url, extraHeaders);
     } catch {
       // Fall through to OpenAPI
     }
   }
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: extraHeaders });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   const text = await res.text();
   return parseOpenAPI(text, url);

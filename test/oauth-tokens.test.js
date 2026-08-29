@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync, statSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -68,5 +68,12 @@ describe("token file helpers", () => {
   test("getClientSecret returns undefined when no secret is stored", () => {
     saveTokenFile("myspec", { tokens: { access_token: "x" } });
     expect(getClientSecret("myspec")).toBeUndefined();
+  });
+
+  test("saveTokenFile writes mode 0o600", () => {
+    if (process.platform === "win32") return;
+    saveTokenFile("myspec", { tokens: { access_token: "x" } });
+    const mode = statSync(join(TEST_DIR, "myspec.json")).mode & 0o777;
+    expect(mode).toBe(0o600);
   });
 });

@@ -9,6 +9,7 @@ import {
 } from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { out } from "../output.js";
+import { clearTokenFile } from "../oauth/tokens.js";
 
 function findSection(registry, name) {
   for (const section of ["mcp", "openapi", "graphql"]) {
@@ -50,6 +51,7 @@ export async function registryMutate(action, args) {
     delete registry[section][name];
     saveRegistry(registry);
     removeCachedSpec(name);
+    clearTokenFile(name, { revokeAll: true });
     out({ ok: true, removed: name });
     return;
   }
