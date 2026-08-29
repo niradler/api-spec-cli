@@ -5,7 +5,7 @@ description: Use when you need to explore or call an OpenAPI, GraphQL, or MCP AP
 
 # Exploring and calling APIs with `spec`
 
-`spec` (the `api-spec-cli` package) turns any OpenAPI, GraphQL, or MCP server into a small set of shell commands. It is built for agents: output is compact JSON by default, you load only the operation you need, and you can search across many specs at once instead of holding full schemas in context.
+`spec` (the `api-spec-cli` package) turns any OpenAPI, GraphQL, or MCP server into a small set of shell commands. It is built for agents: output is TOON by default, you load only the operation you need, and you can search across many specs at once instead of holding full schemas in context.
 
 Install: `npm install -g api-spec-cli` (or `npx api-spec-cli <command>`).
 
@@ -57,12 +57,12 @@ echo '{"query":"agents"}' | spec call --spec agno search_agno --data -
 ## Output formats — pick the cheapest that works
 
 ```bash
-spec list --spec petstore --format toon   # most token-efficient for uniform arrays
-spec list --spec petstore --format json   # default
+spec list --spec petstore --format toon   # default
+spec list --spec petstore --format json   # pretty-printed JSON
 spec show --spec petstore getPetById --format yaml
 ```
 
-`toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the best default when feeding results back into a model. Errors are always JSON on stderr.
+`toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Errors are always JSON on stderr. Help is always plain text.
 
 ## Usage ranking
 

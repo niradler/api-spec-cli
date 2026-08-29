@@ -1,7 +1,7 @@
 import YAML from "yaml";
 import { encode } from "@toon-format/toon";
 
-let outputFormat = "json";
+let outputFormat = "toon";
 
 export function setFormat(format) {
   if (format && ["json", "text", "yaml", "toon"].includes(format)) {

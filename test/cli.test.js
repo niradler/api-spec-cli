@@ -8,7 +8,7 @@ const fixture = resolve(import.meta.dir, "fixtures/openapi.json");
 const testHome = resolve(import.meta.dir, "../.test-home");
 
 function run(args) {
-  const result = execSync(`node ${bin} ${args}`, {
+  const result = execSync(`node ${bin} ${args} --format json`, {
     encoding: "utf-8",
     cwd: resolve(import.meta.dir, ".."),
     env: { ...process.env, HOME: testHome },
@@ -25,9 +25,25 @@ function runRaw(args) {
 }
 
 describe("CLI integration", () => {
-  test("help returns JSON", () => {
-    const result = run("help");
-    expect(result.help).toContain("spec-cli");
+  test("help is plain text with real newlines", () => {
+    const result = runRaw("help");
+    expect(result).toContain("spec-cli");
+    expect(result).toContain("Explore and call APIs");
+    expect(result).not.toMatch(/"help":/);
+    expect(result.split("\n").length).toBeGreaterThan(10);
+  });
+
+  test("help stays plain text even with --format json", () => {
+    const result = runRaw("help --format json");
+    expect(result).not.toMatch(/"help":/);
+    expect(result).toContain("spec-cli");
+  });
+
+  test("list defaults to toon", () => {
+    const result = runRaw(`list --openapi ${fixture}`);
+    expect(result).not.toMatch(/^\s*\{/);
+    expect(result).toContain("operations");
+    expect(result).toContain("total:");
   });
 
   test("list --openapi (inline) works end to end", () => {
