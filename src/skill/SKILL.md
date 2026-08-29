@@ -62,7 +62,7 @@ spec list --spec petstore --format json   # pretty-printed JSON
 spec show --spec petstore getPetById --format yaml
 ```
 
-`toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Errors are always JSON on stderr. Help is always plain text.
+`toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Help and errors are always plain text.
 
 ## Usage ranking
 

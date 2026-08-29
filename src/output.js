@@ -28,8 +28,7 @@ export function out(data) {
 }
 
 export function err(message) {
-  // Errors are always JSON for reliable agent parsing
-  console.error(JSON.stringify({ error: message }));
+  console.error(`error: ${message}`);
 }
 
 function formatText(data, indent = 0) {

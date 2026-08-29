@@ -339,7 +339,7 @@ Reports broken `$ref` references, missing required fields, duplicate operationId
 
 ## Output Format
 
-TOON by default. Errors go to stderr as `{"error": "message"}` with a non-zero exit code.
+TOON by default. Errors go to stderr as plain text (`error: ...`) with a non-zero exit code.
 
 ```bash
 spec list --spec petstore                      # TOON (default)
@@ -348,7 +348,7 @@ spec show --spec petstore getPetById --format yaml
 spec list --spec petstore --format text
 ```
 
-`toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Pass `--format json` for pretty-printed JSON. Errors are always JSON regardless of format. Help is always plain text.
+`toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Pass `--format json` for pretty-printed JSON. Help and errors are always plain text.
 
 ## Token Efficiency
 

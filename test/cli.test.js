@@ -139,7 +139,11 @@ describe("CLI integration", () => {
       run("list");
     } catch (e) {
       threw = true;
-      expect(e.stderr || e.stdout || "").toContain("");
+      const stderr = String(e.stderr || "");
+      expect(stderr).toContain("error:");
+      expect(stderr).toContain("\n");
+      expect(stderr).not.toContain("\\n");
+      expect(stderr).not.toMatch(/\{"error":/);
     }
     expect(threw).toBe(true);
   });
