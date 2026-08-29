@@ -28,7 +28,18 @@ beforeEach(async () => {
   setFormat("json");
 });
 
-describe("out - json (default)", () => {
+describe("out - default format is toon", () => {
+  test("fresh module encodes TOON without setFormat", async () => {
+    const { out: outDefault } = await import(`../src/output.js?default-${Date.now()}`);
+    const data = { name: "Alice", age: 30 };
+    const [output] = captureLog(() => outDefault(data));
+    expect(output).toContain("name: Alice");
+    expect(output).toContain("age: 30");
+    expect(output).not.toMatch(/^\s*\{/);
+  });
+});
+
+describe("out - json", () => {
   test("pretty-prints JSON", () => {
     const data = { name: "Alice", age: 30 };
     const [output] = captureLog(() => out(data));
@@ -115,17 +126,24 @@ describe("out - toon", () => {
   });
 });
 
-describe("err - always JSON regardless of format", () => {
-  test("err stays JSON when format is toon", () => {
+describe("err - always plain text regardless of format", () => {
+  test("err is plain text when format is toon", () => {
     setFormat("toon");
     const [output] = captureErr(() => err("something went wrong"));
-    expect(JSON.parse(output)).toEqual({ error: "something went wrong" });
+    expect(output).toBe("error: something went wrong");
   });
 
-  test("err stays JSON when format is yaml", () => {
-    setFormat("yaml");
+  test("err is plain text when format is json", () => {
+    setFormat("json");
     const [output] = captureErr(() => err("fail"));
-    expect(JSON.parse(output)).toEqual({ error: "fail" });
+    expect(output).toBe("error: fail");
+  });
+
+  test("multiline err uses real newlines not escaped", () => {
+    const [output] = captureErr(() => err("first line\n  second line"));
+    expect(output).toBe("error: first line\n  second line");
+    expect(output).not.toContain("\\n");
+    expect(output).not.toMatch(/\{"error":/);
   });
 });
 

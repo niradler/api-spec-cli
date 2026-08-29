@@ -1,7 +1,7 @@
 import YAML from "yaml";
 import { encode } from "@toon-format/toon";
 
-let outputFormat = "json";
+let outputFormat = "toon";
 
 export function setFormat(format) {
   if (format && ["json", "text", "yaml", "toon"].includes(format)) {
@@ -28,8 +28,7 @@ export function out(data) {
 }
 
 export function err(message) {
-  // Errors are always JSON for reliable agent parsing
-  console.error(JSON.stringify({ error: message }));
+  console.error(`error: ${message}`);
 }
 
 function formatText(data, indent = 0) {

@@ -1,6 +1,6 @@
 # api-spec-cli
 
-CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is JSON by default — compact, parseable, token-efficient.
+CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is TOON by default — compact, parseable, token-efficient.
 
 ## Install
 
@@ -90,7 +90,7 @@ spec list --spec petstore --limit 10 --offset 10  # Next 10
 spec list --mcp-http https://docs.agno.com/mcp # Inline: no registration needed
 ```
 
-Compact output:
+Compact output (`--format json` shown for readability):
 ```json
 {
   "type": "mcp",
@@ -339,16 +339,16 @@ Reports broken `$ref` references, missing required fields, duplicate operationId
 
 ## Output Format
 
-JSON by default. Errors go to stderr as `{"error": "message"}` with a non-zero exit code.
+TOON by default. Errors go to stderr as plain text (`error: ...`) with a non-zero exit code.
 
 ```bash
-spec list --spec petstore --format text
+spec list --spec petstore                      # TOON (default)
+spec list --spec petstore --format json        # pretty-printed JSON
 spec show --spec petstore getPetById --format yaml
-spec list --spec petstore --format toon    # Token-Oriented Object Notation (densest)
-spec list --spec petstore --format=json    # equals syntax also works
+spec list --spec petstore --format text
 ```
 
-`toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Errors are always JSON regardless of format.
+`toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Pass `--format json` for pretty-printed JSON. Help and errors are always plain text.
 
 ## Token Efficiency
 

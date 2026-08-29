@@ -12,10 +12,10 @@ import { authCmd } from "./commands/auth.js";
 import { usageCmd } from "./commands/usage.js";
 import { skillCmd } from "./commands/skill.js";
 import { loadDotenv } from "./dotenv.js";
-import { out, err, setFormat } from "./output.js";
+import { err, setFormat } from "./output.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
-All output is JSON. Designed for AI agents but works for humans too.
+Output is TOON by default. Designed for AI agents but works for humans too.
 
 Every command is stateless — specify the spec source on each call.
 
@@ -95,7 +95,7 @@ OTHER:
   spec validate <file-or-url>          Check OpenAPI spec for errors
   spec skill install                   Install the agent skill into ~/.claude/skills/
   spec skill path                      Print the bundled SKILL.md location
-  --format json|text|yaml|toon         Output format (default: json; toon is densest)
+  --format json|text|yaml|toon         Output format (default: toon)
 
 SECRETS & OVERRIDES:
   Stored values (auth, headers) may use \${VAR} — expanded from the environment at call time.
@@ -309,7 +309,7 @@ export async function run(argv) {
   }
 
   if (isHelpRequest(args)) {
-    out({ help: HELP });
+    console.log(HELP);
     return;
   }
 
