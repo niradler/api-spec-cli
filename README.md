@@ -195,6 +195,39 @@ spec usage petstore                 # ranked operations for one spec
 
 Counts are stored locally in `~/spec-cli-config/usage.json`. `--top` applies after `--filter`/`--tag` and overrides `--limit`. Set `SPEC_NO_USAGE=1` to disable tracking.
 
+## Policy
+
+Deny rules run on `spec call` only. Any matching **block** wins. Missing files = allow. `SPEC_NO_POLICY=1` skips checks.
+
+| File | When to use |
+|---|---|
+| `~/spec-cli-config/policies/<spec>.json` | Common path — rules for one registered server |
+| `~/spec-cli-config/policy.json` | Rules that apply across servers (globs, regex, no `--spec` name) |
+| `.spec-cli/policy.json` | Project-local (`--local`) |
+
+`--policies-path` overrides the per-spec folder (default `~/spec-cli-config/policies`). A plain `--spec k8s` writes `policies/k8s.json`. A glob like `--spec k8s*` stays in the global file.
+
+```bash
+spec policy
+spec policy add --id no-prod-restart --spec k8s --tool restart \
+  --when pod_name.prefix=prod --message "cannot restart prod pods"
+spec policy add --data '{"id":"no-deletes","tool":{"regex":"^delete_.*"},"message":"destructive tools blocked"}'
+spec policy show no-prod-restart
+spec policy remove no-prod-restart --spec k8s
+spec policy add --local --id no-etc --tool write_* --when path.glob=/etc/* --message "no writes under /etc"
+```
+
+`--when` is `key=glob` or `key.op=value`. Operators: `eq`, `prefix`, `suffix`, `glob`, `regex`, `in`, `exists`. Dotted keys walk nested args (`metadata.namespace.prefix=prod`). Tool/spec strings use the same glob rules as `--allow-tool` (exact or `*`).
+
+A blocked call exits non-zero:
+
+```
+error: blocked by policy: cannot restart prod pods
+rule: no-prod-restart
+```
+
+Rules with `spec` only apply when the call uses `--spec <name>`. Inline `--openapi` / `--mcp-http` / `--graphql` calls have no spec name, so match on `tool` / `when` instead.
+
 ## Secrets & Environment Overrides
 
 Stored values can reference secrets without putting them in argv or the registry. All of these expand at call time:
@@ -415,7 +448,10 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 | `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
 | `~/spec-cli-config/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
 | `~/spec-cli-config/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
+| `~/spec-cli-config/policy.json` | Global call-blocking policy (rules across all servers) |
+| `~/spec-cli-config/policies/<name>.json` | Per-spec policy file |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
+| `.spec-cli/policy.json` | Project-local policy rules (merged with global; any block wins) |
 
 ## Planned
 

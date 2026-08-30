@@ -2,7 +2,7 @@
 // Supports: --flag value, --flag=value, and positional args
 // Repeatable flags (--query, --header, --var) are collected into arrays.
 
-const REPEATABLE = new Set(["query", "header", "var", "env", "allow-tool", "disable-tool"]);
+const REPEATABLE = new Set(["query", "header", "var", "env", "allow-tool", "disable-tool", "when"]);
 
 export function parseArgs(args) {
   const flags = {};
@@ -17,7 +17,12 @@ export function parseArgs(args) {
         value = value.join("=");
       } else {
         key = arg.slice(2);
-        value = args[++i];
+        const next = args[i + 1];
+        if (next === undefined || next.startsWith("--")) {
+          value = true;
+        } else {
+          value = args[++i];
+        }
       }
 
       if (REPEATABLE.has(key)) {

@@ -122,6 +122,8 @@ spec import <file>             # bulk-register from mcp.json
 spec list --spec <name>        # compact operation list
 spec show --spec <name> <op>   # full detail for one operation
 spec call --spec <name> <op>   # call it
+spec policy                    # list call-blocking rules
+spec policy add --id no-prod --spec k8s --tool restart --when pod_name.prefix=prod
 spec usage [<name>]            # usage ranking
 spec validate <file-or-url>    # check an OpenAPI spec for errors
 spec help                      # full flag reference
