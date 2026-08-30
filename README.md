@@ -81,7 +81,7 @@ spec specs --compact false    # Full: includes source, config
 
 ### List operations / tools
 
-`list` is compact by default — just IDs, no schemas. Use `--filter`, `--tag`, `--limit` to narrow down.
+`list` is compact (IDs only) and returns the first **20** tools/operations by default. `total` is the full catalog size. Use `--filter`, `spec grep`, `--limit`, and `--offset` on large MCP servers instead of dumping hundreds of tools. `--limit 0` prints the whole catalog.
 
 ```bash
 spec list --spec agno                          # Registered spec (uses cache)
@@ -90,7 +90,11 @@ spec list --spec petstore --tag pets           # OpenAPI: filter by tag
 spec list --spec hashnode --tag mutation        # GraphQL: filter by kind
 spec list --spec petstore --limit 10           # First 10 only
 spec list --spec petstore --limit 10 --offset 10  # Next 10
+spec list --spec datadog --limit 0             # All tools (prefer grep on large servers)
 spec list --mcp-http https://docs.agno.com/mcp # Inline: no registration needed
+spec specs --filter datadog                    # Find a registered server by name
+spec grep metric --spec datadog                # Search 300+ MCP tools without dumping them
+spec grep metric --spec datadog --limit 10 --offset 10
 ```
 
 Compact output (`--format json` shown for readability):
@@ -367,12 +371,22 @@ spec list --spec petstore --format text
 
 `toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Pass `--format json` for pretty-printed JSON. Help and errors are always plain text.
 
+If formatted stdout is over **30000** characters (same ballpark as agent harness tool-result limits), `spec` writes the full payload as JSON to `~/spec-cli-config/results/` and prints a stub with `path` so you can `rg` / read chunks instead of swallowing the blob. Override with `--max-bytes` or `SPEC_MAX_STDOUT`. `--max-bytes 0` always prints.
+
+```
+cached: true
+path: C:\Users\you\spec-cli-config\results\2026-08-30T22-16-03-123.json
+bytes: 184320
+hint: rg <pattern> <path>
+```
+
 ## Token Efficiency
 
 - `list` returns only IDs by default — no schemas
 - `show` resolves `$ref` compactly — nested refs show as names, not explosions
 - `types` lets you inspect one schema at a time
-- `--limit` / `--offset` paginate large APIs
+- `--limit` / `--offset` paginate large APIs (list/grep default to 20)
+- Oversized `call`/`show`/`list` output spills to `~/spec-cli-config/results/` instead of flooding context
 - `--filter` and `--tag` narrow results before output
 
 ## MCP Options
@@ -400,6 +414,7 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 | `~/spec-cli-config/cache/<name>.json` | Cached spec per registered entry |
 | `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
 | `~/spec-cli-config/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
+| `~/spec-cli-config/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
 
 ## Planned

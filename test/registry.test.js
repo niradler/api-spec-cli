@@ -255,6 +255,12 @@ describe("spec specs", () => {
     expect(captured.specs[1].source).toBe("https://petstore.com/openapi.json");
     expect(captured.specs[1].config).toBeDefined();
   });
+
+  test("--filter searches spec names", async () => {
+    await specsCmd(["--filter", "pet"]);
+    expect(captured.specs).toHaveLength(1);
+    expect(captured.specs[0].name).toBe("petstore");
+  });
 });
 
 describe("spec enable / disable / remove", () => {

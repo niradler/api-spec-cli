@@ -34,6 +34,20 @@ export function parseArgs(args) {
   return { flags, positional };
 }
 
+export const DEFAULT_PAGE_LIMIT = 20;
+
+export function parseLimit(flags, fallback = DEFAULT_PAGE_LIMIT) {
+  if (flags.limit === undefined) return fallback;
+  const n = parseInt(flags.limit, 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+export function parseOffset(flags) {
+  const n = parseInt(flags.offset, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 // Parse key=value pairs from an array of strings
 export function parseKV(pairs) {
   const result = {};

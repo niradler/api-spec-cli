@@ -13,7 +13,7 @@ import { usageCmd } from "./commands/usage.js";
 import { skillCmd } from "./commands/skill.js";
 import { importCmd } from "./commands/import.js";
 import { loadDotenv } from "./dotenv.js";
-import { err, setFormat } from "./output.js";
+import { err, setFormat, setMaxStdout } from "./output.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
 Output is TOON by default. Designed for AI agents but works for humans too.
@@ -45,6 +45,7 @@ REGISTRY (register once, use anywhere):
              --oauth-callback-port <1-65535>        Fixed local port for browser callback
 
   spec specs                           List all registered specs
+  spec specs --filter datadog          Search registered spec names
   spec specs --compact false           Show full entry config
   spec remove <name>                   Delete from registry
   spec enable <name>                   Enable a disabled spec
@@ -52,14 +53,16 @@ REGISTRY (register once, use anywhere):
   spec refresh <name>                  Force re-fetch and update cache
 
 DISCOVER:
-  spec list --spec <name>              All operations/tools (compact IDs)
+  spec list --spec <name>              First 20 operations/tools (compact IDs)
   spec list --spec <name> --filter user       Search by keyword
   spec list --spec <name> --tag pets          OpenAPI tag or GraphQL kind
-  spec list --spec <name> --limit 10          Paginate
+  spec list --spec <name> --limit 10          Page size (default 20; 0 = all)
+  spec list --spec <name> --offset 20         Next page
   spec list --spec <name> --top 10            Rank by call count (most-used first)
   spec list --mcp-http <url>           Inline: no registration needed
-  spec grep <pattern>                  Search across all registered specs
+  spec grep <pattern>                  Search across all registered specs (first 20)
   spec grep <pattern> --spec <name>    Search within one spec
+  spec grep <pattern> --limit 10       Page grep matches (default 20; 0 = all)
   spec usage                           Show recorded usage for all specs
   spec usage <name>                    Ranked operations for one spec
 
@@ -99,6 +102,7 @@ OTHER:
   spec skill path                      Print the bundled SKILL.md location
   spec import <file>                   Bulk-register from mcp.json / Claude Desktop / Cursor
   --format json|text|yaml|toon         Output format (default: toon)
+  --max-bytes <n>                      Spill stdout over this size to a results file (default 30000; 0 = never)
 
 SECRETS & OVERRIDES:
   Stored values (auth, headers, oauth secrets) may use \${VAR}, env:NAME, or file:/path.
@@ -112,6 +116,7 @@ ENV VARS:
   SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
   SPEC_NO_USAGE=1                 Disable usage tracking
   SPEC_NO_DOTENV=1                Disable .env auto-loading
+  SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/spec-cli-config/results/
 
 EXAMPLES:
   spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
@@ -155,7 +160,7 @@ const commands = (rest) => [
         ...sourceOptions,
         filter: { type: "string", describe: "Substring search across fields" },
         compact: { type: "string", describe: "Set false to show full details" },
-        limit: { type: "string", describe: "Max results" },
+        limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
         offset: { type: "string", describe: "Skip the first N results" },
         tag: { type: "string", describe: "OpenAPI tag or GraphQL kind" },
         top: { type: "string", describe: "Rank by call count (most-used first)" },
@@ -202,7 +207,9 @@ const commands = (rest) => [
     builder: (y) =>
       y
         .positional("pattern", { type: "string", describe: "Glob or substring pattern" })
-        .option("spec", specSourceOptions.spec),
+        .option("spec", specSourceOptions.spec)
+        .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
+        .option("offset", { type: "string", describe: "Skip the first N matches" }),
     handler: () => grepCmd(rest),
   },
   {
@@ -238,7 +245,9 @@ const commands = (rest) => [
     command: ["specs", "registry"],
     describe: "List all registered specs",
     builder: (y) =>
-      y.option("compact", { type: "string", describe: "Set false to show full entry config" }),
+      y
+        .option("compact", { type: "string", describe: "Set false to show full entry config" })
+        .option("filter", { type: "string", describe: "Substring search on name or description" }),
     handler: () => specsCmd(rest),
   },
   {
@@ -320,6 +329,8 @@ export async function run(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--format" && i + 1 < argv.length) setFormat(argv[++i]);
     else if (argv[i].startsWith("--format=")) setFormat(argv[i].slice(9));
+    else if (argv[i] === "--max-bytes" && i + 1 < argv.length) setMaxStdout(argv[++i]);
+    else if (argv[i].startsWith("--max-bytes=")) setMaxStdout(argv[i].slice(12));
     else args.push(argv[i]);
   }
 

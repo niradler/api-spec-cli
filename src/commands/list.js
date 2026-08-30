@@ -1,5 +1,5 @@
 import { out } from "../output.js";
-import { parseArgs } from "../args.js";
+import { parseArgs, parseLimit, parseOffset } from "../args.js";
 import { resolveSpec } from "../resolve.js";
 import { getUsage } from "../usage.js";
 
@@ -11,8 +11,8 @@ export async function listOperations(args) {
 
   const filter = flags.filter?.toLowerCase();
   const compact = flags.compact !== "false";
-  const limit = parseInt(flags.limit) || 0;
-  const offset = parseInt(flags.offset) || 0;
+  const limit = parseLimit(flags);
+  const offset = parseOffset(flags);
   const tag = flags.tag?.toLowerCase();
   const top = parseInt(flags.top) || 0;
 
@@ -79,11 +79,13 @@ export async function listOperations(args) {
     if (limit > 0) operations = operations.slice(0, limit);
   }
 
-  out({
+  const payload = {
     type: spec.type,
     total,
     showing: operations.length,
     offset: offset || 0,
     operations,
-  });
+  };
+  if (top === 0 && limit > 0 && operations.length < total) payload.limit = limit;
+  out(payload);
 }

@@ -1,7 +1,10 @@
-import { describe, test, expect, beforeEach, spyOn } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { encode, decode } from "@toon-format/toon";
+import { mkdirSync, rmSync, readFileSync, existsSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
-let setFormat, out, err;
+let setFormat, out, err, setMaxStdout, setResultsDir;
 
 function captureLog(fn) {
   const calls = [];
@@ -24,8 +27,9 @@ function captureErr(fn) {
 }
 
 beforeEach(async () => {
-  ({ setFormat, out, err } = await import("../src/output.js?real"));
+  ({ setFormat, out, err, setMaxStdout, setResultsDir } = await import("../src/output.js?real"));
   setFormat("json");
+  setMaxStdout(0);
 });
 
 describe("out - default format is toon", () => {
@@ -155,5 +159,39 @@ describe("setFormat - unknown format is ignored", () => {
     const [output] = captureLog(() => out(data));
     expect(output).toContain("x: 1");
     expect(output.endsWith("\n")).toBe(false);
+  });
+});
+
+describe("out - spill oversized payloads", () => {
+  const dir = join(tmpdir(), `spec-cli-results-${process.pid}`);
+
+  beforeEach(() => {
+    mkdirSync(dir, { recursive: true });
+    setResultsDir(dir);
+    setFormat("json");
+    setMaxStdout(40);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    setMaxStdout(0);
+  });
+
+  test("writes JSON to the results dir and prints a stub", () => {
+    const data = { blob: "x".repeat(80) };
+    const [output] = captureLog(() => out(data));
+    const stub = JSON.parse(output);
+    expect(stub.cached).toBe(true);
+    expect(stub.bytes).toBeGreaterThan(40);
+    expect(stub.hint).toContain("rg <pattern>");
+    expect(existsSync(stub.path)).toBe(true);
+    expect(JSON.parse(readFileSync(stub.path, "utf-8"))).toEqual(data);
+  });
+
+  test("--max-bytes 0 keeps the full payload on stdout", () => {
+    setMaxStdout(0);
+    const data = { blob: "x".repeat(80) };
+    const [output] = captureLog(() => out(data));
+    expect(JSON.parse(output)).toEqual(data);
   });
 });

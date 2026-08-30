@@ -168,4 +168,11 @@ describe("grep - --spec filter", () => {
   test("throws on missing pattern", async () => {
     await expect(grepCmd([])).rejects.toThrow("Usage");
   });
+
+  test("--limit pages matches", async () => {
+    await grepCmd(["e", "--limit", "2"]);
+    expect(captured.total).toBeGreaterThan(2);
+    expect(captured.showing).toBe(2);
+    expect(captured.limit).toBe(2);
+  });
 });
