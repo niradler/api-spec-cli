@@ -310,4 +310,32 @@ describe("resolveConfig integration", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("applyAuthFromFlags sets OpenAPI config.auth from stored token", async () => {
+    const dir = join(tmpdir(), `spec-cli-auth-from-apply-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    setTokenDir(dir);
+    saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
+    const { applyAuthFromFlags } = await import("../src/resolve.js?auth-from-apply");
+    try {
+      const entry = applyAuthFromFlags(
+        { _section: "openapi", type: "openapi", source: "https://api.example/openapi.json", config: {} },
+        { "auth-from": "github-mcp" }
+      );
+      expect(entry.config.auth).toBe("mcp-access");
+      const mcp = applyAuthFromFlags(
+        { _section: "mcp", type: "http", url: "https://mcp.example" },
+        { "auth-from": "github-mcp" }
+      );
+      expect(mcp.headers.Authorization).toBe("Bearer mcp-access");
+      const wins = applyAuthFromFlags(
+        { _section: "openapi", config: {} },
+        { auth: "explicit", "auth-from": "github-mcp" }
+      );
+      expect(wins.config.auth).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
