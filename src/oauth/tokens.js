@@ -1,6 +1,6 @@
 import { homedir } from "os";
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync } from "fs";
 import { expandSecrets } from "../secrets.js";
 
 let TOKEN_DIR = join(homedir(), "spec-cli-config", "tokens");
@@ -28,17 +28,19 @@ export function loadTokenFile(name) {
   }
 }
 
-export function saveTokenFile(name, data) {
+function writeTokenFile(name, data) {
   mkdirSync(TOKEN_DIR, { recursive: true });
-  const existing = loadTokenFile(name);
-  writeFileSync(tokenPath(name), JSON.stringify({ ...existing, ...data }, null, 2));
+  const file = tokenPath(name);
+  writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {}
 }
 
-/**
- * Clear session tokens for re-auth.
- * Preserves clientSecret (a permanent credential) unless revokeAll is true.
- * Pass { revokeAll: true } for `spec auth <name> --revoke` to wipe everything.
- */
+export function saveTokenFile(name, data) {
+  writeTokenFile(name, { ...loadTokenFile(name), ...data });
+}
+
 export function clearTokenFile(name, { revokeAll = false } = {}) {
   const file = tokenPath(name);
   if (!existsSync(file)) return;
@@ -46,13 +48,9 @@ export function clearTokenFile(name, { revokeAll = false } = {}) {
     rmSync(file);
     return;
   }
-  // Keep permanent credentials; wipe session tokens, discovery, and clientInfo
   const existing = loadTokenFile(name);
   if (existing.clientSecret) {
-    writeFileSync(
-      tokenPath(name),
-      JSON.stringify({ clientSecret: existing.clientSecret }, null, 2)
-    );
+    writeTokenFile(name, { clientSecret: existing.clientSecret });
   } else {
     rmSync(file);
   }

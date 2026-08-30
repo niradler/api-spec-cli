@@ -73,11 +73,14 @@ mock.module("../src/commands/fetch.js", () => ({
 
 const { addCmd } = await import("../src/commands/add.js");
 const { specsCmd, registryMutate } = await import("../src/commands/specs.js");
+const { importCmd } = await import("../src/commands/import.js");
+const { setTokenDir, saveTokenFile, loadTokenFile } = await import("../src/oauth/tokens.js");
 
 beforeEach(() => {
   captured = null;
-  // Clean test registry dir
   if (existsSync(testRegistryDir)) rmSync(testRegistryDir, { recursive: true });
+  mkdirSync(join(testRegistryDir, "tokens"), { recursive: true });
+  setTokenDir(join(testRegistryDir, "tokens"));
 });
 
 afterEach(() => {
@@ -208,6 +211,25 @@ describe("spec add", () => {
   test("rejects missing name", async () => {
     await expect(addCmd([])).rejects.toThrow("Usage");
   });
+
+  test("stores oauth-flow client_credentials", async () => {
+    await addCmd(
+      [
+        "ci",
+        "--mcp-http",
+        "https://example.com/mcp",
+        "--oauth-flow",
+        "client_credentials",
+        "--oauth-client-id",
+        "cid",
+      ],
+      { skipProbe: true }
+    );
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "ci");
+    expect(entry.oauthFlow).toBe("client_credentials");
+    expect(entry.oauthClientId).toBe("cid");
+  });
 });
 
 describe("spec specs", () => {
@@ -255,9 +277,11 @@ describe("spec enable / disable / remove", () => {
   });
 
   test("removes an entry", async () => {
+    saveTokenFile("agno", { tokens: { access_token: "secret-token" } });
     await registryMutate("remove", ["agno"]);
     expect(captured.ok).toBe(true);
     expect(captured.removed).toBe("agno");
+    expect(loadTokenFile("agno")).toEqual({});
     captured = null;
     await specsCmd([]);
     expect(captured.specs).toHaveLength(0);
@@ -272,5 +296,49 @@ describe("spec enable / disable / remove", () => {
 
   test("remove on unknown name throws", async () => {
     await expect(registryMutate("remove", ["doesnotexist"])).rejects.toThrow("No spec named");
+  });
+});
+
+describe("spec import", () => {
+  test("registers stdio and http servers from mcp.json", async () => {
+    const file = join(testRegistryDir, "mcp.json");
+    mkdirSync(testRegistryDir, { recursive: true });
+    writeFileSync(
+      file,
+      JSON.stringify({
+        mcpServers: {
+          fs: {
+            command: "npx",
+            args: ["-y", "server", "/tmp"],
+            env: { TOKEN: "abc" },
+          },
+          docs: { url: "https://docs.example.com/mcp" },
+        },
+      })
+    );
+    await importCmd([file]);
+    expect(captured.ok).toBe(true);
+    expect(captured.count).toBe(2);
+    expect(captured.imported).toEqual(["fs", "docs"]);
+    const { getRegistry } = await import("../src/registry.js");
+    const entries = allEntriesFromRegistry(getRegistry());
+    expect(entries.find((e) => e.name === "fs").type).toBe("stdio");
+    expect(entries.find((e) => e.name === "docs").type).toBe("http");
+    expect(entries.find((e) => e.name === "docs").url).toBe("https://docs.example.com/mcp");
+  });
+
+  test("reads servers key used by VS Code", async () => {
+    const file = join(testRegistryDir, "vscode.json");
+    mkdirSync(testRegistryDir, { recursive: true });
+    writeFileSync(
+      file,
+      JSON.stringify({
+        servers: { remote: { url: "https://example.com/sse", type: "sse" } },
+      })
+    );
+    await importCmd([file]);
+    const { getRegistry } = await import("../src/registry.js");
+    const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "remote");
+    expect(entry.type).toBe("sse");
   });
 });

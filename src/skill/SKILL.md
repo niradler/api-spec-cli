@@ -82,7 +82,16 @@ Never paste raw secrets into the registry. Store a placeholder and let it expand
 
 ```bash
 spec add gh --mcp-http https://api.example.com/mcp --header "Authorization=Bearer ${GH_TOKEN}"
+spec add gh --mcp-http https://api.example.com/mcp --auth env:GH_TOKEN
 spec config set auth '${API_TOKEN}'
+```
+
+Override a registered spec's connection at call time without editing it:
+
+```bash
+SPEC_URL=https://staging.example.com/mcp spec call --spec gh some_tool
+SPEC_HEADER_X_TENANT=acme spec list --spec gh
+spec call --spec petstore getPet --auth-from gh
 ```
 
 Override a registered spec's connection at call time without editing it:
@@ -103,6 +112,7 @@ OAuth 2.1 MCP servers are handled automatically on `spec add` (browser flow open
 ```bash
 spec specs                     # list registered specs
 spec grep <pattern>            # search across all specs
+spec import <file>             # bulk-register from mcp.json
 spec list --spec <name>        # compact operation list
 spec show --spec <name> <op>   # full detail for one operation
 spec call --spec <name> <op>   # call it

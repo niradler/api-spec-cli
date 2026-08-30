@@ -11,6 +11,7 @@ import { grepCmd } from "./commands/grep.js";
 import { authCmd } from "./commands/auth.js";
 import { usageCmd } from "./commands/usage.js";
 import { skillCmd } from "./commands/skill.js";
+import { importCmd } from "./commands/import.js";
 import { loadDotenv } from "./dotenv.js";
 import { err, setFormat } from "./output.js";
 
@@ -38,7 +39,7 @@ REGISTRY (register once, use anywhere):
              --cwd <path> (stdio only)
              --allow-tool <glob> (repeatable)
              --disable-tool <glob> (repeatable)
-             --oauth-flow browser|device           OAuth flow (http/sse only, default: browser)
+             --oauth-flow browser|device|client_credentials
              --oauth-client-id <id>                Pre-registered OAuth client ID
              --oauth-client-secret <secret>        Client secret (stored securely, not in registry)
              --oauth-callback-port <1-65535>        Fixed local port for browser callback
@@ -79,6 +80,7 @@ CALL:
 
 PER-CALL OVERRIDES (win over registry entry config):
   --auth <token>        Override auth for this call
+  --auth-from <name>    Use stored OAuth access token from another spec
   --base-url <url>      Override base URL for this call
   --header k=v          Merge/override headers for this call
 
@@ -95,10 +97,11 @@ OTHER:
   spec validate <file-or-url>          Check OpenAPI spec for errors
   spec skill install                   Install the agent skill into ~/.claude/skills/
   spec skill path                      Print the bundled SKILL.md location
+  spec import <file>                   Bulk-register from mcp.json / Claude Desktop / Cursor
   --format json|text|yaml|toon         Output format (default: toon)
 
 SECRETS & OVERRIDES:
-  Stored values (auth, headers) may use \${VAR} — expanded from the environment at call time.
+  Stored values (auth, headers, oauth secrets) may use \${VAR}, env:NAME, or file:/path.
   A .env file in the working directory is auto-loaded (real env vars take precedence).
   SPEC_URL=<url>                  Override a registered MCP/GraphQL spec's endpoint for this call
   SPEC_HEADER_<NAME>=<value>      Add/override a header (SPEC_HEADER_X_TENANT -> X-Tenant)
@@ -132,6 +135,7 @@ const specSourceOptions = {
 
 const overrideOptions = {
   auth: { type: "string", describe: "Override auth token" },
+  "auth-from": { type: "string", describe: "Use stored OAuth token from another spec" },
   "base-url": { type: "string", describe: "Override base URL" },
   header: { type: "string", array: true, describe: "Header k=v (repeatable)" },
   "allow-tool": { type: "string", array: true, describe: "Allow tool glob (repeatable)" },
@@ -216,7 +220,11 @@ const commands = (rest) => [
         ...specSourceOptions,
         ...overrideOptions,
         description: { type: "string", describe: "Human-readable description" },
-        "oauth-flow": { type: "string", choices: ["browser", "device"], describe: "OAuth flow" },
+        "oauth-flow": {
+          type: "string",
+          choices: ["browser", "device", "client_credentials"],
+          describe: "OAuth flow",
+        },
         "oauth-client-id": { type: "string", describe: "Pre-registered OAuth client ID" },
         "oauth-client-secret": {
           type: "string",
@@ -281,6 +289,13 @@ const commands = (rest) => [
     describe: "Check an OpenAPI spec for errors",
     builder: (y) => y.positional("source", { type: "string", describe: "OpenAPI file or URL" }),
     handler: () => validateSpec(rest),
+  },
+  {
+    command: "import <file>",
+    describe: "Bulk-register MCP servers from mcp.json",
+    builder: (y) =>
+      y.positional("file", { type: "string", describe: "mcp.json or Claude Desktop config" }),
+    handler: () => importCmd(rest),
   },
   {
     command: "skill [sub]",

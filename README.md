@@ -36,6 +36,9 @@ spec add hashnode --graphql https://gql.hashnode.com --auth YOUR_TOKEN
 spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
 
 spec add fs --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
+
+spec import ~/.cursor/mcp.json
+spec import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
 Registration is instant — does not connect. Connection happens on first `list`/`show`/`call` and the result is cached at `~/spec-cli-config/cache/<name>.json`.
@@ -190,10 +193,16 @@ Counts are stored locally in `~/spec-cli-config/usage.json`. `--top` applies aft
 
 ## Secrets & Environment Overrides
 
-Stored values can reference environment variables instead of holding raw secrets. Use `${VAR}` in `--auth` or header values — it's expanded from the environment at call time, never stored expanded:
+Stored values can reference secrets without putting them in argv or the registry. All of these expand at call time:
+
+- `${VAR}` from the environment
+- `env:NAME` — same as mcp2cli, the whole value is an env var
+- `file:/path/to/secret` — file contents (trailing newline stripped)
 
 ```bash
 spec add gh --mcp-http https://api.example.com/mcp --header "Authorization=Bearer ${GH_TOKEN}"
+spec add gh --mcp-http https://api.example.com/mcp --auth env:GH_TOKEN
+spec add gh --mcp-http https://api.example.com/mcp --oauth-client-secret file:/run/secrets/oauth
 spec config set auth '${API_TOKEN}'
 ```
 
@@ -292,6 +301,7 @@ spec add myserver --mcp-http https://... --oauth-flow device
 
 ```bash
 spec add myserver --mcp-http https://... \
+  --oauth-flow client_credentials \
   --oauth-client-id <id> --oauth-client-secret <secret>
 ```
 
@@ -312,6 +322,13 @@ Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from th
 | `--oauth-client-secret <secret>` | Use client credentials flow (machine/CI) |
 | `--oauth-callback-port <port>` | Fixed callback port (required for apps with exact redirect URL match, e.g. GitHub) |
 | `--oauth-flow device` | Force device authorization flow (headless/SSH) |
+| `--oauth-flow client_credentials` | Machine/CI flow (requires client id + secret) |
+
+Reuse a stored MCP OAuth access token on an OpenAPI or GraphQL call (only if the token audience matches):
+
+```bash
+spec call --spec petstore getPet --auth-from github-mcp
+```
 
 ---
 
@@ -387,4 +404,5 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 
 ## Planned
 
-- `spec import <file>` — bulk import servers from VS Code `mcp.json` or Claude Desktop config format
+- MCP resources and prompts (`spec resources` / `spec prompts`)
+- OAuth for OpenAPI and GraphQL (not just MCP)

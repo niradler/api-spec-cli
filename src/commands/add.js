@@ -4,7 +4,7 @@ import { out } from "../output.js";
 import { saveTokenFile } from "../oauth/tokens.js";
 import { runOAuthFlow } from "../oauth/auth-flow.js";
 
-export async function addCmd(args) {
+export async function addCmd(args, { skipProbe = false } = {}) {
   const { flags, positional } = parseArgs(args);
   const name = positional[0];
   if (!name)
@@ -137,6 +137,7 @@ export async function addCmd(args) {
 
   // Probe for OAuth on HTTP/SSE MCP entries (skip if static Authorization header already set)
   if (
+    !skipProbe &&
     section === "mcp" &&
     (entry.type === "http" || entry.type === "sse") &&
     !entry.headers?.Authorization
