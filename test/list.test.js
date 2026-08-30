@@ -202,4 +202,17 @@ describe("list - MCP", () => {
     expect(captured.showing).toBe(30);
     expect(captured.limit).toBeUndefined();
   });
+
+  test("--top does not emit a limit field", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: Array.from({ length: 30 }, (_, i) => ({
+        name: `tool_${i}`,
+        description: `Tool ${i}`,
+      })),
+    };
+    await listOperations(["--top", "5"]);
+    expect(captured.showing).toBe(5);
+    expect(captured.limit).toBeUndefined();
+  });
 });

@@ -86,6 +86,6 @@ export async function listOperations(args) {
     offset: offset || 0,
     operations,
   };
-  if (limit > 0 && operations.length < total) payload.limit = limit;
+  if (top === 0 && limit > 0 && operations.length < total) payload.limit = limit;
   out(payload);
 }
