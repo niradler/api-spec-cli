@@ -4,11 +4,33 @@ import { parseArgs, parseKV } from "../args.js";
 import { createMcpClient } from "../mcp-client.js";
 import { resolveSpec, resolveConfig } from "../resolve.js";
 import { recordUsage } from "../usage.js";
+import { enforcePolicy, applyPoliciesPath } from "../policy.js";
 
 const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
 
+function policyArgs(flags) {
+  let args = {};
+  if (flags.data) {
+    try {
+      const parsed = JSON.parse(flags.data);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        args = { ...parsed };
+        if (parsed.variables && typeof parsed.variables === "object") {
+          args = { ...args, ...parsed.variables };
+        }
+      }
+    } catch {}
+  }
+  return { ...args, ...parseKV(flags.query), ...parseKV(flags.var) };
+}
+
+function assertPolicy(flags, tool) {
+  enforcePolicy({ spec: flags.spec, tool, args: policyArgs(flags) });
+}
+
 export async function callOperation(args) {
   const { flags, positional } = parseArgs(args);
+  applyPoliciesPath(flags);
   const target = positional[0];
   if (!target)
     throw new Error(
@@ -54,7 +76,8 @@ async function callMCP(spec, entry, target, flags) {
   const varOverrides = parseKV(flags.var);
   toolArgs = { ...toolArgs, ...varOverrides };
 
-  // Re-connect using the original entry (which holds transport config + headers/env)
+  enforcePolicy({ spec: flags.spec, tool: tool.name, args: toolArgs });
+
   const client = await createMcpClient(entry);
   try {
     const result = await client.callTool({ name: tool.name, arguments: toolArgs });
@@ -79,6 +102,8 @@ async function callOpenAPI(spec, config, target, flags) {
   );
 
   if (!op) throw new Error(`Operation not found: ${target}`);
+
+  assertPolicy(flags, op.id);
 
   const baseUrl = config.baseUrl || spec.servers?.[0]?.url || "";
   let path = op.path;
@@ -132,6 +157,8 @@ async function callGraphQL(spec, config, target, flags) {
 
   const op = spec.operations.find((o) => o.name.toLowerCase() === lower);
   if (!op) throw new Error(`Operation not found: ${target}`);
+
+  assertPolicy(flags, op.name);
 
   const endpoint = config.baseUrl || spec.endpoint;
   if (!endpoint)

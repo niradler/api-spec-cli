@@ -32,10 +32,16 @@ describe("parseArgs", () => {
     expect(flags.header).toEqual(["X-Key=val"]);
   });
 
-  test("mixes positional and flags", () => {
-    const { positional, flags } = parseArgs(["show", "getPet", "--format", "yaml"]);
-    expect(positional).toEqual(["show", "getPet"]);
-    expect(flags.format).toBe("yaml");
+  test("bare --flag is true when no value follows", () => {
+    const { flags, positional } = parseArgs(["add", "--local", "--id", "r1"]);
+    expect(flags.local).toBe(true);
+    expect(flags.id).toBe("r1");
+    expect(positional).toEqual(["add"]);
+  });
+
+  test("collects --when as repeatable", () => {
+    const { flags } = parseArgs(["--when", "pod_name.prefix=prod", "--when", "force.eq=true"]);
+    expect(flags.when).toEqual(["pod_name.prefix=prod", "force.eq=true"]);
   });
 
   test("handles --flag=value with = in value", () => {

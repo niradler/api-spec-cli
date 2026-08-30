@@ -1,7 +1,9 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
-import { writeFileSync, unlinkSync } from "fs";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { writeFileSync, unlinkSync, mkdirSync, rmSync, existsSync } from "fs";
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import { resolve, join } from "path";
+import { tmpdir } from "os";
+import { setPolicyDir, setLocalPolicyFile, setPoliciesDir } from "../src/policy.js";
 
 let captured;
 mock.module("../src/output.js", () => ({
@@ -68,7 +70,35 @@ mock.module("../src/resolve.js", () => ({
   resolveConfig: (_flags, _entry) => currentConfig,
 }));
 
+let mcpCallTool;
+mock.module("../src/mcp-client.js", () => ({
+  createMcpClient: async () => ({
+    callTool: async (args) => {
+      mcpCallTool = args;
+      return { content: [{ type: "text", text: "ok" }], isError: false };
+    },
+    close: async () => {},
+  }),
+}));
+
 const { callOperation } = await import("../src/commands/call.js");
+
+const POLICY_DIR = join(tmpdir(), "spec-cli-test-call-policy-" + process.pid);
+
+beforeEach(() => {
+  mkdirSync(POLICY_DIR, { recursive: true });
+  setPolicyDir(POLICY_DIR);
+  setLocalPolicyFile(join(POLICY_DIR, "local-policy.json"));
+  setPoliciesDir(null);
+  const file = join(POLICY_DIR, "policy.json");
+  if (existsSync(file)) rmSync(file);
+  lastFetchUrl = undefined;
+  mcpCallTool = undefined;
+});
+
+afterEach(() => {
+  rmSync(POLICY_DIR, { recursive: true, force: true });
+});
 
 describe("call - GraphQL", () => {
   test("auto-builds query from operation schema", async () => {
@@ -228,5 +258,80 @@ describe("call - OpenAPI", () => {
     expect(lastFetchOpts.headers["X-Global"]).toBe("yes");
 
     globalThis.fetch = originalFetch;
+  });
+
+  test("blocks a matching policy rule before fetch", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    writeFileSync(
+      join(POLICY_DIR, "policy.json"),
+      JSON.stringify({
+        rules: [
+          {
+            id: "no-pet-42",
+            effect: "block",
+            tool: "getPet",
+            when: { petId: { eq: "42" } },
+            message: "pet 42 is locked",
+          },
+        ],
+      })
+    );
+
+    await expect(callOperation(["getPet", "--var", "petId=42"])).rejects.toThrow(
+      "blocked by policy: pet 42 is locked"
+    );
+    expect(lastFetchUrl).toBeUndefined();
+  });
+});
+
+describe("call - GraphQL policy", () => {
+  test("blocks before fetch", async () => {
+    currentSpec = mockGraphQL();
+    currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
+    writeFileSync(
+      join(POLICY_DIR, "policy.json"),
+      JSON.stringify({
+        rules: [
+          {
+            id: "no-me",
+            effect: "block",
+            tool: "me",
+            message: "me is locked",
+          },
+        ],
+      })
+    );
+
+    await expect(callOperation(["me"])).rejects.toThrow("blocked by policy: me is locked");
+    expect(lastFetchUrl).toBeUndefined();
+  });
+});
+
+describe("call - MCP policy", () => {
+  test("blocks before callTool", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: [{ name: "restart", description: "Restart a pod", inputSchema: null }],
+    };
+    writeFileSync(
+      join(POLICY_DIR, "policy.json"),
+      JSON.stringify({
+        rules: [
+          {
+            id: "no-prod-restart",
+            effect: "block",
+            tool: "restart",
+            when: { pod_name: { prefix: "prod" } },
+            message: "cannot restart prod pods",
+          },
+        ],
+      })
+    );
+
+    await expect(callOperation(["restart", "--var", "pod_name=prod-api"])).rejects.toThrow(
+      "blocked by policy: cannot restart prod pods"
+    );
+    expect(mcpCallTool).toBeUndefined();
   });
 });

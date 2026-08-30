@@ -12,6 +12,7 @@ import { authCmd } from "./commands/auth.js";
 import { usageCmd } from "./commands/usage.js";
 import { skillCmd } from "./commands/skill.js";
 import { importCmd } from "./commands/import.js";
+import { policyCmd } from "./commands/policy.js";
 import { loadDotenv } from "./dotenv.js";
 import { err, setFormat, setMaxStdout } from "./output.js";
 
@@ -94,6 +95,16 @@ CONFIG (persisted in .spec-cli/config.json — lowest priority):
   spec config get
   spec config unset auth
 
+POLICY (deny rules evaluated on spec call):
+  spec policy                          List rules (global + per-spec + project)
+  spec policy add --id no-prod --spec k8s --tool restart --when pod_name.prefix=prod --message "no prod restarts"
+  spec policy add --data '{"id":"no-deletes","tool":{"regex":"^delete_.*"},"message":"no deletes"}'
+  spec policy show <id>
+  spec policy remove <id> [--spec <name>]
+  spec policy clear [--spec <name>]
+  spec policy add --local ...          Write .spec-cli/policy.json
+  --policies-path <dir>                Per-spec JSON folder (default ~/spec-cli-config/policies)
+
 OTHER:
   spec auth <name>                     Re-authenticate an OAuth-protected MCP spec
   spec auth <name> --revoke            Clear stored OAuth token
@@ -115,6 +126,7 @@ ENV VARS:
   MCP_RETRY_DELAY=1000            Base retry delay in ms, doubles each attempt (default: 1000)
   SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
   SPEC_NO_USAGE=1                 Disable usage tracking
+  SPEC_NO_POLICY=1                Disable policy checks
   SPEC_NO_DOTENV=1                Disable .env auto-loading
   SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/spec-cli-config/results/
 
@@ -189,6 +201,7 @@ const commands = (rest) => [
           var: { type: "string", array: true, describe: "Path/GraphQL var k=v (repeatable)" },
           query: { type: "string", array: true, describe: "Query param k=v (repeatable)" },
           method: { type: "string", describe: "Override HTTP method" },
+          "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
     handler: () => callOperation(rest),
   },
@@ -292,6 +305,29 @@ const commands = (rest) => [
         .positional("key", { type: "string" })
         .positional("value", { type: "string" }),
     handler: () => configCmd(rest),
+  },
+  {
+    command: "policy [action] [id]",
+    describe: "List, add, show, or remove call-blocking policy rules",
+    builder: (y) =>
+      y
+        .positional("action", {
+          type: "string",
+          choices: ["list", "add", "show", "remove", "clear"],
+        })
+        .positional("id", { type: "string", describe: "Rule id" })
+        .option("data", { type: "string", describe: "Rule JSON object" })
+        .option("id", { type: "string", describe: "Rule id" })
+        .option("tool", { type: "string", describe: "Tool or operation glob" })
+        .option("spec", { type: "string", describe: "Limit rule to this spec name (glob)" })
+        .option("message", { type: "string", describe: "Error message when blocked" })
+        .option("when", { type: "string", array: true, describe: "Arg matcher key.op=value" })
+        .option("local", { type: "boolean", describe: "Use project .spec-cli/policy.json" })
+        .option("policies-path", {
+          type: "string",
+          describe: "Folder of per-spec policy JSON files",
+        }),
+    handler: () => policyCmd(rest),
   },
   {
     command: "validate <source>",
