@@ -31,10 +31,21 @@ You can skip registration and pass an inline source on any command: `--openapi <
 
 ## Discover without burning context
 
+Large MCP servers (Datadog-scale, 300+ tools) should never be dumped. Search, then inspect one tool.
+
+```bash
+spec specs --filter datadog          # find the registered server
+spec grep metric --spec datadog      # search tool names/descriptions (first 20)
+spec grep metric --spec datadog --limit 10 --offset 10
+spec list --spec datadog --filter log --limit 20
+spec list --spec datadog --limit 0   # full catalog only if you really need it
+spec show --spec datadog <tool>      # one tool's schema
+```
+
 ```bash
 spec grep search                 # substring match across every registered spec
 spec grep "get*"                 # glob
-spec list --spec petstore        # compact IDs, no schemas
+spec list --spec petstore        # first 20 compact IDs
 spec list --spec petstore --filter pet --limit 10
 spec list --spec petstore --top 10   # the 10 most-called operations first
 spec show --spec petstore getPetById  # full detail for ONE operation
@@ -64,6 +75,8 @@ spec show --spec petstore getPetById --format yaml
 
 `toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Help and errors are always plain text.
 
+If a result is over 30000 characters, stdout is a stub with `cached: true` and `path` pointing at `~/spec-cli-config/results/*.json`. Read or `rg` that file instead of the full payload. `--max-bytes 0` disables this.
+
 ## Usage ranking
 
 `spec` records which operations you call. Use it to surface the operations that matter:
@@ -92,13 +105,6 @@ Override a registered spec's connection at call time without editing it:
 SPEC_URL=https://staging.example.com/mcp spec call --spec gh some_tool
 SPEC_HEADER_X_TENANT=acme spec list --spec gh
 spec call --spec petstore getPet --auth-from gh
-```
-
-Override a registered spec's connection at call time without editing it:
-
-```bash
-SPEC_URL=https://staging.example.com/mcp spec call --spec gh some_tool
-SPEC_HEADER_X_TENANT=acme spec list --spec gh
 ```
 
 A `.env` file next to where you run `spec` is auto-loaded (real environment variables win over it).

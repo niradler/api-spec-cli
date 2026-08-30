@@ -21,9 +21,10 @@ function findSection(registry, name) {
 export async function specsCmd(args) {
   const { flags } = parseArgs(args);
   const compact = flags.compact !== "false";
+  const filter = flags.filter?.toLowerCase();
   const registry = getRegistry();
 
-  const specs = allEntries(registry).map((e) => {
+  let specs = allEntries(registry).map((e) => {
     if (compact) {
       return {
         name: e.name,
@@ -34,6 +35,14 @@ export async function specsCmd(args) {
     }
     return e;
   });
+
+  if (filter) {
+    specs = specs.filter(
+      (s) =>
+        s.name.toLowerCase().includes(filter) ||
+        (s.description && String(s.description).toLowerCase().includes(filter))
+    );
+  }
 
   out({ specs });
 }

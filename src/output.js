@@ -1,7 +1,20 @@
 import YAML from "yaml";
 import { encode } from "@toon-format/toon";
+import { homedir } from "os";
+import { join } from "path";
+import { mkdirSync, writeFileSync, chmodSync } from "fs";
+
+const DEFAULT_MAX_STDOUT = 30000;
 
 let outputFormat = "toon";
+let maxStdout = parseMax(process.env.SPEC_MAX_STDOUT, DEFAULT_MAX_STDOUT);
+let resultsDir = join(homedir(), "spec-cli-config", "results");
+
+function parseMax(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
 
 export function setFormat(format) {
   if (format && ["json", "text", "yaml", "toon"].includes(format)) {
@@ -9,22 +22,58 @@ export function setFormat(format) {
   }
 }
 
-export function out(data) {
+export function setMaxStdout(value) {
+  maxStdout = parseMax(value, DEFAULT_MAX_STDOUT);
+}
+
+export function setResultsDir(dir) {
+  resultsDir = dir;
+}
+
+export function getMaxStdout() {
+  return maxStdout;
+}
+
+function render(data) {
   switch (outputFormat) {
     case "yaml":
-      console.log(YAML.stringify(data).trimEnd());
-      break;
+      return YAML.stringify(data).trimEnd();
     case "toon":
-      console.log(encode(data).trimEnd());
-      break;
+      return encode(data).trimEnd();
     case "text":
-      console.log(formatText(data));
-      break;
+      return formatText(data);
     case "json":
     default:
-      console.log(JSON.stringify(data, null, 2));
-      break;
+      return JSON.stringify(data, null, 2);
   }
+}
+
+function spill(data) {
+  mkdirSync(resultsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const file = join(resultsDir, `${stamp}-${process.hrtime.bigint()}.json`);
+  writeFileSync(file, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {}
+  return file;
+}
+
+export function out(data) {
+  const text = render(data);
+  if (maxStdout > 0 && text.length > maxStdout) {
+    const path = spill(data);
+    console.log(
+      render({
+        cached: true,
+        path,
+        bytes: Buffer.byteLength(text),
+        hint: `rg <pattern> ${path}`,
+      })
+    );
+    return;
+  }
+  console.log(text);
 }
 
 export function err(message) {

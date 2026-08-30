@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { parseArgs, parseKV } from "../src/args.js";
+import { parseArgs, parseKV, parseLimit, parseOffset } from "../src/args.js";
 
 describe("parseArgs", () => {
   test("parses positional args", () => {
@@ -60,5 +60,30 @@ describe("parseKV", () => {
 
   test("throws on missing =", () => {
     expect(() => parseKV(["bad"])).toThrow("Invalid key=value");
+  });
+});
+
+describe("parseLimit", () => {
+  test("defaults to 20 when the flag is omitted", () => {
+    expect(parseLimit({})).toBe(20);
+  });
+
+  test("0 means no cap", () => {
+    expect(parseLimit({ limit: "0" })).toBe(0);
+  });
+
+  test("parses a positive page size", () => {
+    expect(parseLimit({ limit: "5" })).toBe(5);
+  });
+});
+
+describe("parseOffset", () => {
+  test("missing or invalid is 0", () => {
+    expect(parseOffset({})).toBe(0);
+    expect(parseOffset({ offset: "nope" })).toBe(0);
+  });
+
+  test("parses a positive offset", () => {
+    expect(parseOffset({ offset: "20" })).toBe(20);
   });
 });

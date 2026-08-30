@@ -173,4 +173,33 @@ describe("list - MCP", () => {
     expect(captured.total).toBe(1);
     expect(captured.operations[0].id).toBe("get_page");
   });
+
+  test("defaults to 20 tools when the catalog is large", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: Array.from({ length: 30 }, (_, i) => ({
+        name: `tool_${i}`,
+        description: `Tool ${i}`,
+      })),
+    };
+    await listOperations([]);
+    expect(captured.total).toBe(30);
+    expect(captured.showing).toBe(20);
+    expect(captured.limit).toBe(20);
+    expect(captured.operations[0].id).toBe("tool_0");
+    expect(captured.operations[19].id).toBe("tool_19");
+  });
+
+  test("--limit 0 returns the full catalog", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: Array.from({ length: 30 }, (_, i) => ({
+        name: `tool_${i}`,
+        description: `Tool ${i}`,
+      })),
+    };
+    await listOperations(["--limit", "0"]);
+    expect(captured.showing).toBe(30);
+    expect(captured.limit).toBeUndefined();
+  });
 });

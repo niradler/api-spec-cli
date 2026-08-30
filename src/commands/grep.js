@@ -1,5 +1,5 @@
 import { out } from "../output.js";
-import { parseArgs } from "../args.js";
+import { parseArgs, parseLimit, parseOffset } from "../args.js";
 import { getRegistry, getEntry, getCachedSpec, saveCachedSpec, allEntries } from "../registry.js";
 import { fetchSpec } from "./fetch.js";
 import { matchGlob } from "../glob.js";
@@ -9,7 +9,7 @@ export async function grepCmd(args) {
   const pattern = positional[0];
   if (!pattern)
     throw new Error(
-      "Usage: spec grep <pattern> [--spec <name>]\n" +
+      "Usage: spec grep <pattern> [--spec <name>] [--limit N] [--offset N]\n" +
         "  Glob patterns: * matches anything, ? matches one char\n" +
         "  Plain text: substring match across name and description"
     );
@@ -62,6 +62,32 @@ export async function grepCmd(args) {
     }
   }
 
-  const total = results.reduce((s, r) => s + r.matches.length, 0);
-  out({ pattern, total, results });
+  const limit = parseLimit(flags);
+  const offset = parseOffset(flags);
+  const flat = [];
+  for (const row of results) {
+    for (const match of row.matches) {
+      flat.push({ spec: row.spec, type: row.type, match });
+    }
+  }
+  const total = flat.length;
+  let page = flat;
+  if (offset > 0) page = page.slice(offset);
+  if (limit > 0) page = page.slice(0, limit);
+
+  const grouped = [];
+  const index = new Map();
+  for (const row of page) {
+    if (!index.has(row.spec)) {
+      const group = { spec: row.spec, type: row.type, matches: [] };
+      index.set(row.spec, group);
+      grouped.push(group);
+    }
+    index.get(row.spec).matches.push(row.match);
+  }
+
+  const payload = { pattern, total, showing: page.length, results: grouped };
+  if (offset > 0) payload.offset = offset;
+  if (limit > 0 && page.length < total) payload.limit = limit;
+  out(payload);
 }
