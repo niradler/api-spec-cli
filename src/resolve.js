@@ -1,4 +1,5 @@
 import { getEntry, getCachedSpec, saveCachedSpec } from "./registry.js";
+import { metaCacheKey } from "./cache.js";
 import { fetchSpec, inlineEntryFromFlags } from "./commands/fetch.js";
 import { getConfig } from "./store.js";
 import { parseKV } from "./args.js";
@@ -42,7 +43,12 @@ export async function resolveSpec(flags) {
 
   const inlineEntry = applyAuthFromFlags(inlineEntryFromFlags(flags), flags);
   if (inlineEntry) {
-    const spec = await fetchSpec(inlineEntry);
+    const name = metaCacheKey(inlineEntry);
+    let spec = getCachedSpec(name);
+    if (!spec) {
+      spec = await fetchSpec(inlineEntry);
+      saveCachedSpec(name, spec);
+    }
     return { spec, entry: inlineEntry };
   }
 

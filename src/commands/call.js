@@ -5,8 +5,23 @@ import { createMcpClient } from "../mcp-client.js";
 import { resolveSpec, resolveConfig } from "../resolve.js";
 import { recordUsage } from "../usage.js";
 import { enforcePolicy, applyPoliciesPath } from "../policy.js";
+import { getCallCache, setCallCache, callCacheKey } from "../cache.js";
 
 const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
+
+function specId(flags, entry) {
+  return flags.spec || entry?.url || entry?.source || entry?.command || "inline";
+}
+
+function cachedCall(keyParts) {
+  return getCallCache(callCacheKey(keyParts));
+}
+
+function storeCall(keyParts, flags, operationId, payload) {
+  setCallCache(callCacheKey(keyParts), payload, { spec: flags.spec || null });
+  out(payload);
+  recordUsage(flags.spec, operationId);
+}
 
 function policyArgs(flags) {
   let args = {};
@@ -78,13 +93,36 @@ async function callMCP(spec, entry, target, flags) {
 
   enforcePolicy({ spec: flags.spec, tool: tool.name, args: toolArgs });
 
+  const keyParts = {
+    spec: specId(flags, entry),
+    path: entry.url || [entry.command, ...(entry.args || [])].filter(Boolean).join(" ") || "",
+    method: "callTool",
+    operation: tool.name,
+    vars: varOverrides,
+    query: {},
+    data: toolArgs,
+    headers: entry.headers || {},
+  };
+  const hit = cachedCall(keyParts);
+  if (hit) {
+    out(hit);
+    recordUsage(flags.spec, tool.name);
+    if (hit.isError) process.exit(1);
+    return;
+  }
+
   const client = await createMcpClient(entry);
   try {
     const result = await client.callTool({ name: tool.name, arguments: toolArgs });
-    // Normalize MCP result: expose isError and content at the top level
     const isError = result.isError === true;
-    out({ tool: tool.name, arguments: toolArgs, isError, content: result.content, result });
-    recordUsage(flags.spec, tool.name);
+    const payload = {
+      tool: tool.name,
+      arguments: toolArgs,
+      isError,
+      content: result.content,
+      result,
+    };
+    storeCall(keyParts, flags, tool.name, payload);
     if (isError) process.exit(1);
   } finally {
     await client.close();
@@ -134,6 +172,23 @@ async function callOpenAPI(spec, config, target, flags) {
     if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
   }
 
+  const keyParts = {
+    spec: specId(flags, { url: baseUrl }),
+    path: url,
+    method,
+    operation: op.id,
+    vars,
+    query: queryParams,
+    data: body || null,
+    headers,
+  };
+  const hit = cachedCall(keyParts);
+  if (hit) {
+    out(hit);
+    recordUsage(flags.spec, op.id);
+    return;
+  }
+
   const res = await fetch(url, {
     method,
     headers,
@@ -143,13 +198,12 @@ async function callOpenAPI(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  out({
+  storeCall(keyParts, flags, op.id, {
     status: res.status,
     statusText: res.statusText,
     headers: Object.fromEntries(res.headers.entries()),
     body: responseBody,
   });
-  recordUsage(flags.spec, op.id);
 }
 
 async function callGraphQL(spec, config, target, flags) {
@@ -191,6 +245,23 @@ async function callGraphQL(spec, config, target, flags) {
     variables: Object.keys(variables).length > 0 ? variables : undefined,
   });
 
+  const keyParts = {
+    spec: specId(flags, { url: endpoint, source: spec.endpoint }),
+    path: endpoint,
+    method: "POST",
+    operation: op.name,
+    vars: varOverrides,
+    query: {},
+    data: { query, variables },
+    headers,
+  };
+  const hit = cachedCall(keyParts);
+  if (hit) {
+    out(hit);
+    recordUsage(flags.spec, op.name);
+    return;
+  }
+
   const res = await fetch(endpoint, {
     method: "POST",
     headers,
@@ -200,14 +271,13 @@ async function callGraphQL(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  out({
+  storeCall(keyParts, flags, op.name, {
     status: res.status,
     query,
     variables: Object.keys(variables).length > 0 ? variables : undefined,
     data: responseBody?.data || null,
     errors: responseBody?.errors || null,
   });
-  recordUsage(flags.spec, op.name);
 }
 
 function buildGraphQLQuery(op, types) {

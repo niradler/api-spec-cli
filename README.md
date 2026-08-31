@@ -41,7 +41,7 @@ spec import ~/.cursor/mcp.json
 spec import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-Registration is instant — does not connect. Connection happens on first `list`/`show`/`call` and the result is cached at `~/spec-cli-config/cache/<name>.json`.
+Registration is instant — does not connect. Connection happens on first `list`/`show`/`call`. Spec/tool catalogs are cached 30 minutes; identical `call` results (same path + params) are cached 1 minute. Files live in `~/spec-cli-config/cache/`.
 
 ### Or use inline (no registration)
 
@@ -53,7 +53,7 @@ spec list --mcp-sse http://localhost:3000/sse
 spec list --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
 ```
 
-Inline fetches every call, nothing cached.
+Inline specs use the same file cache (keyed from URL/command), so `listTools` is not repeated on every `call` within TTL.
 
 ---
 
@@ -431,6 +431,11 @@ MCP_RETRY_DELAY=1000    # Base delay in ms, doubles each attempt, capped at 5s (
 
 # HTTP timeout for OpenAPI/GraphQL calls
 SPEC_HTTP_TIMEOUT=30000 # ms (default: 30000)
+
+# File cache (global, ~/spec-cli-config/cache/)
+SPEC_NO_CACHE=1              # Disable meta + call cache
+SPEC_META_CACHE_MS=1800000   # Tools/schema TTL (default 30m)
+SPEC_CALL_CACHE_MS=60000     # Call result TTL (default 1m)
 ```
 
 Stdio env vars support `${VAR}` expansion from the host environment:
@@ -444,7 +449,7 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 | Path | Purpose |
 |---|---|
 | `~/spec-cli-config/registry.json` | Global named registry |
-| `~/spec-cli-config/cache/<name>.json` | Cached spec per registered entry |
+| `~/spec-cli-config/cache/` | File cache: `meta-*` (30m tools/schema) and `call-*` (1m results). Expired files are deleted on the next command. |
 | `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
 | `~/spec-cli-config/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
 | `~/spec-cli-config/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
