@@ -15,6 +15,7 @@ import { importCmd } from "./commands/import.js";
 import { policyCmd } from "./commands/policy.js";
 import { loadDotenv } from "./dotenv.js";
 import { err, setFormat, setMaxStdout } from "./output.js";
+import { sweepCache } from "./cache.js";
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
 Output is TOON by default. Designed for AI agents but works for humans too.
@@ -127,6 +128,9 @@ ENV VARS:
   SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
   SPEC_NO_USAGE=1                 Disable usage tracking
   SPEC_NO_POLICY=1                Disable policy checks
+  SPEC_NO_CACHE=1                 Disable file cache (meta + call)
+  SPEC_META_CACHE_MS=1800000      Tools/schema cache TTL (default 30m)
+  SPEC_CALL_CACHE_MS=60000        Call result cache TTL (default 1m)
   SPEC_NO_DOTENV=1                Disable .env auto-loading
   SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/spec-cli-config/results/
 
@@ -360,6 +364,7 @@ function isHelpRequest(args) {
 
 export async function run(argv) {
   loadDotenv();
+  sweepCache();
 
   const args = [];
   for (let i = 0; i < argv.length; i++) {

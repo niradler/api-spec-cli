@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { resolve, join } from "path";
 import { tmpdir } from "os";
 import { setPolicyDir, setLocalPolicyFile, setPoliciesDir } from "../src/policy.js";
+import { setCacheDir } from "../src/cache.js";
 
 let captured;
 mock.module("../src/output.js", () => ({
@@ -84,12 +85,15 @@ mock.module("../src/mcp-client.js", () => ({
 const { callOperation } = await import("../src/commands/call.js");
 
 const POLICY_DIR = join(tmpdir(), "spec-cli-test-call-policy-" + process.pid);
+const CACHE_DIR = join(tmpdir(), "spec-cli-test-call-cache-" + process.pid);
 
 beforeEach(() => {
   mkdirSync(POLICY_DIR, { recursive: true });
+  mkdirSync(CACHE_DIR, { recursive: true });
   setPolicyDir(POLICY_DIR);
   setLocalPolicyFile(join(POLICY_DIR, "local-policy.json"));
   setPoliciesDir(null);
+  setCacheDir(CACHE_DIR);
   const file = join(POLICY_DIR, "policy.json");
   if (existsSync(file)) rmSync(file);
   lastFetchUrl = undefined;
@@ -98,6 +102,7 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(POLICY_DIR, { recursive: true, force: true });
+  rmSync(CACHE_DIR, { recursive: true, force: true });
 });
 
 describe("call - GraphQL", () => {
@@ -220,6 +225,56 @@ describe("call - OpenAPI", () => {
 
     await callOperation(["getPet", "--var", "petId=42"]);
     expect(lastFetchUrl).toBe("https://api.test.com/pets/42");
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("should reuse a call cache hit for the same path and params", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    let fetches = 0;
+    globalThis.fetch = async (url, opts) => {
+      fetches += 1;
+      lastFetchUrl = url;
+      lastFetchOpts = opts;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ id: 1, name: "Rex" }),
+        text: async () => JSON.stringify({ id: 1, name: "Rex" }),
+      };
+    };
+
+    await callOperation(["getPet", "--var", "petId=42"]);
+    await callOperation(["getPet", "--var", "petId=42"]);
+    expect(fetches).toBe(1);
+    await callOperation(["getPet", "--var", "petId=99"]);
+    expect(fetches).toBe(2);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  test("should not cache a failed OpenAPI call", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    let fetches = 0;
+    globalThis.fetch = async () => {
+      fetches += 1;
+      return {
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ error: "boom" }),
+        text: async () => JSON.stringify({ error: "boom" }),
+      };
+    };
+
+    await callOperation(["getPet", "--var", "petId=42"]);
+    await callOperation(["getPet", "--var", "petId=42"]);
+    expect(fetches).toBe(2);
 
     globalThis.fetch = originalFetch;
   });

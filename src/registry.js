@@ -1,10 +1,10 @@
 import { homedir } from "os";
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { getMetaCache, setMetaCache, removeMetaCache, removeCallCachesForSpec } from "./cache.js";
 
 const REGISTRY_DIR = join(homedir(), "spec-cli-config");
 const REGISTRY_FILE = join(REGISTRY_DIR, "registry.json");
-const CACHE_DIR = join(REGISTRY_DIR, "cache");
 
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -59,21 +59,14 @@ export function getEntry(name) {
 }
 
 export function getCachedSpec(name) {
-  const file = join(CACHE_DIR, `${name}.json`);
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, "utf-8"));
-  } catch {
-    return null;
-  }
+  return getMetaCache(name);
 }
 
 export function saveCachedSpec(name, spec) {
-  ensureDir(CACHE_DIR);
-  writeFileSync(join(CACHE_DIR, `${name}.json`), JSON.stringify(spec, null, 2));
+  setMetaCache(name, spec);
 }
 
 export function removeCachedSpec(name) {
-  const file = join(CACHE_DIR, `${name}.json`);
-  if (existsSync(file)) rmSync(file);
+  removeMetaCache(name);
+  removeCallCachesForSpec(name);
 }

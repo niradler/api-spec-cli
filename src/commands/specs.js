@@ -83,6 +83,7 @@ export async function registryMutate(action, args) {
     const entry = { ...registry[section][name], name, _section: section };
     if (!entry.enabled) throw new Error(`Spec '${name}' is disabled. Enable it first.`);
     const spec = await fetchSpec(entry);
+    removeCachedSpec(name);
     saveCachedSpec(name, spec);
     const count = spec.tools?.length ?? spec.operations?.length ?? 0;
     out({ ok: true, refreshed: name, type: spec.type, count });
