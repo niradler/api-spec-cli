@@ -14,6 +14,9 @@ const OPERATORS = new Set(["eq", "prefix", "suffix", "glob", "regex", "in", "exi
 function parseWhen(pairs) {
   const when = {};
   for (const pair of pairs || []) {
+    if (typeof pair !== "string") {
+      throw new Error("Invalid --when. Use key=value or key.op=value");
+    }
     const idx = pair.indexOf("=");
     if (idx === -1) throw new Error(`Invalid --when ${pair}. Use key=value or key.op=value`);
     const left = pair.slice(0, idx);
@@ -86,7 +89,7 @@ function normalizeRule(raw) {
 
 function resolveTarget(flags, rule) {
   if (flags.local) return { which: "local", specName: undefined, source: "local" };
-  const spec = flags.spec || (typeof rule?.spec === "string" ? rule.spec : null);
+  const spec = (typeof rule?.spec === "string" ? rule.spec : null) || flags.spec;
   if (isServerSpecName(spec)) return { which: "server", specName: spec, source: `server:${spec}` };
   return { which: "global", specName: undefined, source: "global" };
 }

@@ -183,5 +183,6 @@ export function enforcePolicy(ctx) {
   if (!hit) return;
   const message = hit.message || "blocked";
   const id = hit.id ? `\nrule: ${hit.id}` : "";
-  throw new Error(`blocked by policy: ${message}${id}`);
+  const source = hit.source ? `\nsource: ${hit.source}` : "";
+  throw new Error(`blocked by policy: ${message}${id}${source}`);
 }

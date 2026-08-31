@@ -57,6 +57,7 @@ export function parseOffset(flags) {
 export function parseKV(pairs) {
   const result = {};
   for (const pair of pairs || []) {
+    if (typeof pair !== "string") throw new Error(`Invalid key=value: ${pair}`);
     const idx = pair.indexOf("=");
     if (idx === -1) throw new Error(`Invalid key=value: ${pair}`);
     result[pair.slice(0, idx)] = pair.slice(idx + 1);

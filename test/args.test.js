@@ -67,6 +67,10 @@ describe("parseKV", () => {
   test("throws on missing =", () => {
     expect(() => parseKV(["bad"])).toThrow("Invalid key=value");
   });
+
+  test("throws when a repeatable flag was passed bare", () => {
+    expect(() => parseKV([true])).toThrow("Invalid key=value");
+  });
 });
 
 describe("parseLimit", () => {
