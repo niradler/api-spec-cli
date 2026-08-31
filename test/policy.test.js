@@ -278,6 +278,7 @@ describe("enforcePolicy", () => {
     );
     expect(() => enforcePolicy(ctx())).toThrow("blocked by policy: cannot restart prod pods");
     expect(() => enforcePolicy(ctx())).toThrow("rule: no-prod-restart");
+    expect(() => enforcePolicy(ctx())).toThrow("source: global");
   });
 
   test("SPEC_NO_POLICY skips a corrupt policy file", () => {
@@ -502,5 +503,24 @@ describe("spec policy CRUD", () => {
     await policyCmd(["add", "--id", "no-deletes", "--spec", "k8s", "--tool", "delete_*"]);
     await policyCmd(["clear", "--spec", "k8s"]);
     expect(JSON.parse(readFileSync(serverPolicyPath("k8s"), "utf-8")).rules).toEqual([]);
+  });
+
+  test("bare --when throws a usage error", async () => {
+    await expect(
+      policyCmd(["add", "--id", "x", "--tool", "y", "--when", "--local"])
+    ).rejects.toThrow("Invalid --when");
+  });
+
+  test("add --data spec name wins over a conflicting --spec flag", async () => {
+    await policyCmd([
+      "add",
+      "--spec",
+      "k8s",
+      "--data",
+      JSON.stringify({ id: "x", spec: "aws", tool: "restart" }),
+    ]);
+    expect(captured.source).toBe("server:aws");
+    expect(existsSync(serverPolicyPath("aws"))).toBe(true);
+    expect(existsSync(serverPolicyPath("k8s"))).toBe(false);
   });
 });
