@@ -1,6 +1,14 @@
 import { homedir } from "os";
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  readdirSync,
+  chmodSync,
+} from "fs";
 import { createHash } from "crypto";
 
 const META_TTL_MS = 30 * 60 * 1000;
@@ -35,6 +43,13 @@ function callTtl() {
 
 function ensureDir() {
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+function writeCacheFile(file, rec) {
+  writeFileSync(file, JSON.stringify(rec), { mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {}
 }
 
 function safeKey(key) {
@@ -84,9 +99,11 @@ export function sweepCache() {
     if (!name.endsWith(".json")) continue;
     const file = join(CACHE_DIR, name);
     const rec = readRecord(file);
-    if (!rec) continue;
-    const ttl = name.startsWith("call-") ? callTtl() : metaTtl();
-    if (rec.cachedAt == null || isExpired(rec, ttl)) {
+    if (
+      !rec ||
+      rec.cachedAt == null ||
+      isExpired(rec, name.startsWith("call-") ? callTtl() : metaTtl())
+    ) {
       try {
         rmSync(file);
       } catch {}
@@ -119,6 +136,17 @@ export function metaCacheKey(entry) {
       command: entry?.command,
       args: entry?.args,
       cwd: entry?.cwd,
+      env: entry?.env,
+      headers: entry?.headers,
+      allowedTools: entry?.allowedTools,
+      disabledTools: entry?.disabledTools,
+      config: {
+        allowedTools: entry?.config?.allowedTools,
+        disabledTools: entry?.config?.disabledTools,
+        headers: entry?.config?.headers,
+        auth: entry?.config?.auth,
+        baseUrl: entry?.config?.baseUrl,
+      },
     })
   );
   return "inline-" + createHash("sha256").update(json).digest("hex").slice(0, 16);
@@ -147,10 +175,7 @@ export function setMetaCache(key, spec) {
   if (!enabled()) return;
   ensureDir();
   const file = metaFile(key);
-  writeFileSync(
-    file,
-    JSON.stringify({ kind: "meta", cachedAt: Date.now(), ttl: metaTtl(), data: spec })
-  );
+  writeCacheFile(file, { kind: "meta", cachedAt: Date.now(), ttl: metaTtl(), data: spec });
   const legacy = legacyMetaFile(key);
   if (legacy !== file && existsSync(legacy)) {
     try {
@@ -185,16 +210,13 @@ export function getCallCache(key) {
 export function setCallCache(key, payload, extra = {}) {
   if (!enabled()) return;
   ensureDir();
-  writeFileSync(
-    callFile(key),
-    JSON.stringify({
-      kind: "call",
-      cachedAt: Date.now(),
-      ttl: callTtl(),
-      spec: extra.spec || null,
-      data: payload,
-    })
-  );
+  writeCacheFile(callFile(key), {
+    kind: "call",
+    cachedAt: Date.now(),
+    ttl: callTtl(),
+    spec: extra.spec || null,
+    data: payload,
+  });
 }
 
 export function removeCallCachesForSpec(specName) {

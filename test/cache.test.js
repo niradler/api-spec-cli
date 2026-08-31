@@ -13,6 +13,7 @@ const {
   getCallCache,
   setCallCache,
   callCacheKey,
+  metaCacheKey,
 } = await import("../src/cache.js");
 
 beforeEach(() => {
@@ -115,6 +116,17 @@ describe("file cache", () => {
     expect(a).toBe(b);
     expect(a).not.toBe(otherPath);
     expect(a).not.toBe(otherQuery);
+  });
+
+  test("should fingerprint inline allow/disable tools in the meta cache key", () => {
+    const base = { type: "http", url: "https://docs.agno.com/mcp" };
+    const open = metaCacheKey(base);
+    const disabled = metaCacheKey({ ...base, disabledTools: ["dangerous_*"] });
+    const allowed = metaCacheKey({ ...base, allowedTools: ["search_agno"] });
+    expect(open).not.toBe(disabled);
+    expect(open).not.toBe(allowed);
+    expect(disabled).not.toBe(allowed);
+    expect(metaCacheKey({ ...base, disabledTools: ["dangerous_*"] })).toBe(disabled);
   });
 
   test("should keep fresh files when sweeping expired ones", () => {

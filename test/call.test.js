@@ -256,6 +256,29 @@ describe("call - OpenAPI", () => {
     globalThis.fetch = originalFetch;
   });
 
+  test("should not cache a failed OpenAPI call", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    let fetches = 0;
+    globalThis.fetch = async () => {
+      fetches += 1;
+      return {
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ error: "boom" }),
+        text: async () => JSON.stringify({ error: "boom" }),
+      };
+    };
+
+    await callOperation(["getPet", "--var", "petId=42"]);
+    await callOperation(["getPet", "--var", "petId=42"]);
+    expect(fetches).toBe(2);
+
+    globalThis.fetch = originalFetch;
+  });
+
   test("adds query params", async () => {
     currentSpec = mockOpenAPISpec();
     currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };

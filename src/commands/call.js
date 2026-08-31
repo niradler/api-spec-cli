@@ -17,8 +17,8 @@ function cachedCall(keyParts) {
   return getCallCache(callCacheKey(keyParts));
 }
 
-function storeCall(keyParts, flags, operationId, payload) {
-  setCallCache(callCacheKey(keyParts), payload, { spec: flags.spec || null });
+function storeCall(keyParts, flags, operationId, payload, cacheable = true) {
+  if (cacheable) setCallCache(callCacheKey(keyParts), payload, { spec: flags.spec || null });
   out(payload);
   recordUsage(flags.spec, operationId);
 }
@@ -122,7 +122,7 @@ async function callMCP(spec, entry, target, flags) {
       content: result.content,
       result,
     };
-    storeCall(keyParts, flags, tool.name, payload);
+    storeCall(keyParts, flags, tool.name, payload, !isError);
     if (isError) process.exit(1);
   } finally {
     await client.close();
@@ -198,12 +198,18 @@ async function callOpenAPI(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  storeCall(keyParts, flags, op.id, {
-    status: res.status,
-    statusText: res.statusText,
-    headers: Object.fromEntries(res.headers.entries()),
-    body: responseBody,
-  });
+  storeCall(
+    keyParts,
+    flags,
+    op.id,
+    {
+      status: res.status,
+      statusText: res.statusText,
+      headers: Object.fromEntries(res.headers.entries()),
+      body: responseBody,
+    },
+    res.ok
+  );
 }
 
 async function callGraphQL(spec, config, target, flags) {
@@ -271,13 +277,19 @@ async function callGraphQL(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  storeCall(keyParts, flags, op.name, {
-    status: res.status,
-    query,
-    variables: Object.keys(variables).length > 0 ? variables : undefined,
-    data: responseBody?.data || null,
-    errors: responseBody?.errors || null,
-  });
+  storeCall(
+    keyParts,
+    flags,
+    op.name,
+    {
+      status: res.status,
+      query,
+      variables: Object.keys(variables).length > 0 ? variables : undefined,
+      data: responseBody?.data || null,
+      errors: responseBody?.errors || null,
+    },
+    res.ok && !responseBody?.errors
+  );
 }
 
 function buildGraphQLQuery(op, types) {
