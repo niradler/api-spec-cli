@@ -1,11 +1,15 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "path";
 import { execSync } from "child_process";
+import { readFileSync } from "fs";
 
 const bin = resolve(import.meta.dir, "../bin/spec.js");
 const fixture = resolve(import.meta.dir, "fixtures/openapi.json");
 // Use a throw-away home dir so tests never touch the real ~/spec-cli-config
 const testHome = resolve(import.meta.dir, "../.test-home");
+const pkgVersion = JSON.parse(
+  readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")
+).version;
 
 function run(args) {
   const result = execSync(`node ${bin} ${args} --format json`, {
@@ -37,6 +41,20 @@ describe("CLI integration", () => {
     const result = runRaw("help --format json");
     expect(result).not.toMatch(/"help":/);
     expect(result).toContain("spec-cli");
+  });
+
+  test("--version prints the package version", () => {
+    expect(runRaw("--version")).toBe(pkgVersion);
+  });
+
+  test("-v prints the package version", () => {
+    expect(runRaw("-v")).toBe(pkgVersion);
+  });
+
+  test("--version stays plain text even with --format json", () => {
+    const result = runRaw("--version --format json");
+    expect(result).toBe(pkgVersion);
+    expect(result).not.toMatch(/\{"version":/);
   });
 
   test("list defaults to toon", () => {

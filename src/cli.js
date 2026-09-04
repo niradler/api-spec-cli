@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import yargs from "yargs";
 import { listOperations } from "./commands/list.js";
 import { showOperation } from "./commands/show.js";
@@ -16,6 +17,10 @@ import { policyCmd } from "./commands/policy.js";
 import { loadDotenv } from "./dotenv.js";
 import { err, setFormat, setMaxStdout } from "./output.js";
 import { sweepCache } from "./cache.js";
+
+const { version: VERSION } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8")
+);
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
 Output is TOON by default. Designed for AI agents but works for humans too.
@@ -113,6 +118,7 @@ OTHER:
   spec skill install                   Install the agent skill into ~/.claude/skills/
   spec skill path                      Print the bundled SKILL.md location
   spec import <file>                   Bulk-register from mcp.json / Claude Desktop / Cursor
+  --version, -v                        Print the CLI version
   --format json|text|yaml|toon         Output format (default: toon)
   --max-bytes <n>                      Spill stdout over this size to a results file (default 30000; 0 = never)
 
@@ -362,6 +368,10 @@ function isHelpRequest(args) {
   return !args[0] || args[0] === "help" || args.includes("--help") || args.includes("-h");
 }
 
+function isVersionRequest(args) {
+  return args.includes("--version") || args.includes("-v");
+}
+
 export async function run(argv) {
   loadDotenv();
   sweepCache();
@@ -377,6 +387,11 @@ export async function run(argv) {
 
   if (isHelpRequest(args)) {
     console.log(HELP);
+    return;
+  }
+
+  if (isVersionRequest(args)) {
+    console.log(VERSION);
     return;
   }
 
