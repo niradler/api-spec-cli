@@ -13,6 +13,12 @@ import {
   mergeHeaders,
 } from "./secrets.js";
 
+const activeClients = new Set();
+
+export async function closeMcpClients() {
+  await Promise.allSettled([...activeClients].map((client) => client.close()));
+}
+
 const MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES ?? "3");
 const RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY ?? "1000");
 
@@ -71,8 +77,19 @@ async function connect(spec) {
     throw new Error(`Unknown MCP type: ${spec.type}. Supported: stdio, sse, http`);
   }
 
-  await client.connect(transport);
-  return client;
+  try {
+    await client.connect(transport);
+    activeClients.add(client);
+    const close = client.close.bind(client);
+    client.close = async () => {
+      activeClients.delete(client);
+      await close();
+    };
+    return client;
+  } catch (error) {
+    await transport.close().catch(() => {});
+    throw error;
+  }
 }
 
 export async function createMcpClient(spec) {

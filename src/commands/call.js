@@ -19,8 +19,8 @@ function cachedCall(keyParts) {
 
 function storeCall(keyParts, flags, operationId, payload, cacheable = true) {
   if (cacheable) setCallCache(callCacheKey(keyParts), payload, { spec: flags.spec || null });
-  out(payload);
   recordUsage(flags.spec, operationId);
+  return payload;
 }
 
 function policyArgs(flags) {
@@ -65,19 +65,27 @@ export async function callOperation(args) {
   }
 
   const { spec, entry } = await resolveSpec(flags);
+  const payload = await executeOperation(spec, entry, target, flags);
+  out(payload);
+  if (payload.isError) process.exit(1);
+}
+
+export async function executeOperation(spec, entry, target, flags) {
   const config = resolveConfig(flags, entry);
 
   if (spec.type === "openapi") {
-    await callOpenAPI(spec, config, target, flags);
+    return callOpenAPI(spec, config, target, flags);
   } else if (spec.type === "mcp") {
-    await callMCP(spec, entry, target, flags);
+    return callMCP(spec, entry, target, flags);
   } else {
-    await callGraphQL(spec, config, target, flags);
+    return callGraphQL(spec, config, target, flags);
   }
 }
 
 async function callMCP(spec, entry, target, flags) {
-  const tool = spec.tools.find((t) => t.name.toLowerCase() === target.toLowerCase());
+  const tool = spec.tools.find((t) =>
+    flags.exactTarget ? t.name === target : t.name.toLowerCase() === target.toLowerCase()
+  );
   if (!tool) throw new Error(`Tool not found: ${target}. Run 'spec list' to see available tools.`);
 
   let toolArgs = {};
@@ -105,10 +113,8 @@ async function callMCP(spec, entry, target, flags) {
   };
   const hit = cachedCall(keyParts);
   if (hit) {
-    out(hit);
     recordUsage(flags.spec, tool.name);
-    if (hit.isError) process.exit(1);
-    return;
+    return hit;
   }
 
   const client = await createMcpClient(entry);
@@ -122,8 +128,7 @@ async function callMCP(spec, entry, target, flags) {
       content: result.content,
       result,
     };
-    storeCall(keyParts, flags, tool.name, payload, !isError);
-    if (isError) process.exit(1);
+    return storeCall(keyParts, flags, tool.name, payload, !isError);
   } finally {
     await client.close();
   }
@@ -132,11 +137,12 @@ async function callMCP(spec, entry, target, flags) {
 async function callOpenAPI(spec, config, target, flags) {
   const lower = target.toLowerCase();
 
-  const op = spec.operations.find(
-    (o) =>
-      o.id.toLowerCase() === lower ||
-      o.path.toLowerCase() === lower ||
-      `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
+  const op = spec.operations.find((o) =>
+    flags.exactTarget
+      ? o.id === target
+      : o.id.toLowerCase() === lower ||
+        o.path.toLowerCase() === lower ||
+        `${o.method.toLowerCase()} ${o.path.toLowerCase()}` === lower
   );
 
   if (!op) throw new Error(`Operation not found: ${target}`);
@@ -160,7 +166,7 @@ async function callOpenAPI(spec, config, target, flags) {
   }
 
   const queryParams = parseKV(flags.query);
-  const qs = new URLSearchParams(queryParams).toString();
+  const qs = new URLSearchParams(flags.queryEntries || queryParams).toString();
   const url = `${baseUrl}${path}${qs ? "?" + qs : ""}`;
 
   const method = (flags.method || op.method).toUpperCase();
@@ -184,9 +190,8 @@ async function callOpenAPI(spec, config, target, flags) {
   };
   const hit = cachedCall(keyParts);
   if (hit) {
-    out(hit);
     recordUsage(flags.spec, op.id);
-    return;
+    return hit;
   }
 
   const res = await fetch(url, {
@@ -198,7 +203,7 @@ async function callOpenAPI(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  storeCall(
+  return storeCall(
     keyParts,
     flags,
     op.id,
@@ -215,7 +220,9 @@ async function callOpenAPI(spec, config, target, flags) {
 async function callGraphQL(spec, config, target, flags) {
   const lower = target.toLowerCase();
 
-  const op = spec.operations.find((o) => o.name.toLowerCase() === lower);
+  const op = spec.operations.find((o) =>
+    flags.exactTarget ? o.name === target : o.name.toLowerCase() === lower
+  );
   if (!op) throw new Error(`Operation not found: ${target}`);
 
   assertPolicy(flags, op.name);
@@ -237,6 +244,8 @@ async function callGraphQL(spec, config, target, flags) {
   } else {
     query = buildGraphQLQuery(op, spec.types);
   }
+
+  if (flags.generatedQuery) query = buildGraphQLQuery(op, spec.types);
 
   const varOverrides = parseKV(flags.var);
   const variables = { ...dataVariables, ...varOverrides };
@@ -263,9 +272,8 @@ async function callGraphQL(spec, config, target, flags) {
   };
   const hit = cachedCall(keyParts);
   if (hit) {
-    out(hit);
     recordUsage(flags.spec, op.name);
-    return;
+    return hit;
   }
 
   const res = await fetch(endpoint, {
@@ -277,7 +285,7 @@ async function callGraphQL(spec, config, target, flags) {
   const contentType = res.headers.get("content-type") || "";
   const responseBody = contentType.includes("json") ? await res.json() : await res.text();
 
-  storeCall(
+  return storeCall(
     keyParts,
     flags,
     op.name,
@@ -295,7 +303,9 @@ async function callGraphQL(spec, config, target, flags) {
 function buildGraphQLQuery(op, types) {
   const args = op.args || [];
   const argsStr =
-    args.length > 0 ? `(${args.map((a) => `$${a.name}: ${flattenType(a.type)}`).join(", ")})` : "";
+    args.length > 0
+      ? `(${args.map((a) => `$${a.name}: ${flattenType(a.type)}${a.defaultValue != null ? ` = ${a.defaultValue}` : ""}`).join(", ")})`
+      : "";
   const passArgs =
     args.length > 0 ? `(${args.map((a) => `${a.name}: $${a.name}`).join(", ")})` : "";
 

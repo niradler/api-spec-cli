@@ -190,7 +190,17 @@ export function inlineEntryFromFlags(flags) {
 async function loadMCPFromEntry(entry) {
   const client = await createMcpClient(entry);
   try {
-    const { tools } = await client.listTools();
+    const tools = [];
+    let cursor;
+    const cursors = new Set();
+    do {
+      const page = await client.listTools(cursor ? { cursor } : {});
+      tools.push(...page.tools);
+      cursor = page.nextCursor;
+      if (cursor && (cursors.has(cursor) || tools.length > 10000))
+        throw new Error("Invalid or oversized upstream tool catalog");
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
     let mapped = tools.map((t) => ({
       name: t.name,
       description: t.description || null,
@@ -227,7 +237,7 @@ async function loadFromUrl(url, skipGraphQLProbe = false, extraHeaders = {}) {
     }
   }
 
-  const res = await fetch(url, { headers: extraHeaders });
+  const res = await fetch(url, { headers: extraHeaders, signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   const text = await res.text();
   return parseOpenAPI(text, url);
@@ -245,6 +255,7 @@ async function loadGraphQL(url, extraHeaders = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify({ query: INTROSPECTION_QUERY }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!res.ok) throw new Error(`GraphQL introspection failed: HTTP ${res.status}`);
