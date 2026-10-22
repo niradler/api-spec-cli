@@ -1,8 +1,8 @@
-import { homedir } from "os";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { GLOBAL_DIR } from "./paths.js";
 
-let USAGE_DIR = join(homedir(), "spec-cli-config");
+let USAGE_DIR = GLOBAL_DIR;
 
 export function setUsageDir(dir) {
   USAGE_DIR = dir;

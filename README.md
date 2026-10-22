@@ -8,7 +8,7 @@ CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is 
 npm install -g api-spec-cli
 ```
 
-Works with Node.js 18+. No other dependencies.
+Works with Node.js 20.19+, 22.12+, or 23+. No other dependencies.
 
 ```bash
 # Or run without installing
@@ -41,7 +41,7 @@ spec import ~/.cursor/mcp.json
 spec import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-Registration is instant — does not connect. Connection happens on first `list`/`show`/`call`. Spec/tool catalogs are cached 30 minutes; identical `call` results (same path + params) are cached 1 minute. Files live in `~/spec-cli-config/cache/`.
+Registration is instant — does not connect. Connection happens on first `list`/`show`/`call`. Spec/tool catalogs are cached 30 minutes; identical `call` results (same path + params) are cached 1 minute. Files live in `~/.spec-cli/cache/`.
 
 ### Or use inline (no registration)
 
@@ -193,7 +193,7 @@ spec usage                          # recorded usage across all specs
 spec usage petstore                 # ranked operations for one spec
 ```
 
-Counts are stored locally in `~/spec-cli-config/usage.json`. `--top` applies after `--filter`/`--tag` and overrides `--limit`. Set `SPEC_NO_USAGE=1` to disable tracking.
+Counts are stored locally in `~/.spec-cli/usage.json`. `--top` applies after `--filter`/`--tag` and overrides `--limit`. Set `SPEC_NO_USAGE=1` to disable tracking.
 
 ## Policy
 
@@ -201,11 +201,11 @@ Deny rules run on `spec call` only. Any matching **block** wins. Missing files =
 
 | File | When to use |
 |---|---|
-| `~/spec-cli-config/policies/<spec>.json` | Common path — rules for one registered server |
-| `~/spec-cli-config/policy.json` | Rules that apply across servers (globs, regex, no `--spec` name) |
+| `~/.spec-cli/policies/<spec>.json` | Common path — rules for one registered server |
+| `~/.spec-cli/policy.json` | Rules that apply across servers (globs, regex, no `--spec` name) |
 | `.spec-cli/policy.json` | Project-local (`--local`) |
 
-`--policies-path` overrides the per-spec folder (default `~/spec-cli-config/policies`). A plain `--spec k8s` writes `policies/k8s.json`. A glob like `--spec k8s*` stays in the global file.
+`--policies-path` overrides the per-spec folder (default `~/.spec-cli/policies`). A plain `--spec k8s` writes `policies/k8s.json`. A glob like `--spec k8s*` stays in the global file.
 
 ```bash
 spec policy
@@ -259,7 +259,7 @@ SPEC_HEADER_X_TENANT=acme spec list --spec gh                            # add/o
 Install a ready-made skill that teaches an agent the explore-then-call workflow:
 
 ```bash
-spec skill install   # copy SKILL.md into ~/.claude/skills/api-spec-cli/
+spec skill install   # copy SKILL.md into ~/.claude/skills/spec-cli/
 spec skill path      # print the bundled SKILL.md location
 ```
 
@@ -349,7 +349,7 @@ spec auth myserver           # Re-run the OAuth flow
 spec auth myserver --revoke  # Clear stored token only
 ```
 
-Tokens are stored in `~/spec-cli-config/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`. Access tokens are refreshed automatically: when a stored token expires, the refresh token is used and the rotated tokens are persisted, so the next command picks them up without re-authenticating.
+Tokens are stored in `~/.spec-cli/tokens/<name>.json` — separate from the cache, not touched by `spec refresh`. Access tokens are refreshed automatically: when a stored token expires, the refresh token is used and the rotated tokens are persisted, so the next command picks them up without re-authenticating.
 
 ### OAuth flags
 
@@ -404,11 +404,11 @@ spec list --spec petstore --format text
 
 `toon` ([Token-Oriented Object Notation](https://github.com/toon-format/spec)) is the most token-efficient format for tabular/list output — the best choice when feeding results back into a model. Pass `--format json` for pretty-printed JSON. Help and errors are always plain text.
 
-If formatted stdout is over **30000** characters (same ballpark as agent harness tool-result limits), `spec` writes the full payload as JSON to `~/spec-cli-config/results/` and prints a stub with `path` so you can `rg` / read chunks instead of swallowing the blob. Override with `--max-bytes` or `SPEC_MAX_STDOUT`. `--max-bytes 0` always prints.
+If formatted stdout is over **30000** characters (same ballpark as agent harness tool-result limits), `spec` writes the full payload as JSON to `~/.spec-cli/results/` and prints a stub with `path` so you can `rg` / read chunks instead of swallowing the blob. Override with `--max-bytes` or `SPEC_MAX_STDOUT`. `--max-bytes 0` always prints.
 
 ```
 cached: true
-path: C:\Users\you\spec-cli-config\results\2026-08-30T22-16-03-123.json
+path: C:\Users\you\.spec-cli\results\2026-08-30T22-16-03-123.json
 bytes: 184320
 hint: rg <pattern> <path>
 ```
@@ -419,7 +419,7 @@ hint: rg <pattern> <path>
 - `show` resolves `$ref` compactly — nested refs show as names, not explosions
 - `types` lets you inspect one schema at a time
 - `--limit` / `--offset` paginate large APIs (list/grep default to 20)
-- Oversized `call`/`show`/`list` output spills to `~/spec-cli-config/results/` instead of flooding context
+- Oversized `call`/`show`/`list` output spills to `~/.spec-cli/results/` instead of flooding context
 - `--filter` and `--tag` narrow results before output
 
 ## MCP Options
@@ -432,7 +432,7 @@ MCP_RETRY_DELAY=1000    # Base delay in ms, doubles each attempt, capped at 5s (
 # HTTP timeout for OpenAPI/GraphQL calls
 SPEC_HTTP_TIMEOUT=30000 # ms (default: 30000)
 
-# File cache (global, ~/spec-cli-config/cache/)
+# File cache (global, ~/.spec-cli/cache/)
 SPEC_NO_CACHE=1              # Disable meta + call cache
 SPEC_META_CACHE_MS=1800000   # Tools/schema TTL (default 30m)
 SPEC_CALL_CACHE_MS=60000     # Call result TTL (default 1m)
@@ -448,15 +448,21 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 
 | Path | Purpose |
 |---|---|
-| `~/spec-cli-config/registry.json` | Global named registry |
-| `~/spec-cli-config/cache/` | File cache: `meta-*` (30m tools/schema) and `call-*` (1m results). Expired files are deleted on the next command. |
-| `~/spec-cli-config/tokens/<name>.json` | OAuth tokens per MCP entry |
-| `~/spec-cli-config/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
-| `~/spec-cli-config/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
-| `~/spec-cli-config/policy.json` | Global call-blocking policy (rules across all servers) |
-| `~/spec-cli-config/policies/<name>.json` | Per-spec policy file |
+| `~/.spec-cli/registry.json` | Global named registry |
+| `~/.spec-cli/cache/` | File cache: `meta-*` (30m tools/schema) and `call-*` (1m results). Expired files are deleted on the next command. |
+| `~/.spec-cli/tokens/<name>.json` | OAuth tokens per MCP entry |
+| `~/.spec-cli/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
+| `~/.spec-cli/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
+| `~/.spec-cli/policy.json` | Global call-blocking policy (rules across all servers) |
+| `~/.spec-cli/policies/<name>.json` | Per-spec policy file |
 | `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
 | `.spec-cli/policy.json` | Project-local policy rules (merged with global; any block wins) |
+
+All global CLI data lives in `~/.spec-cli/`. On startup, an existing
+`~/spec-cli-config/` is renamed to `~/.spec-cli/` if the destination does not
+already exist. If both directories exist, neither is merged or overwritten.
+Migration failures produce a warning and leave the old directory in place;
+commands continue using `~/.spec-cli/`. Project-local `.spec-cli/` stays separate.
 
 ## Planned
 

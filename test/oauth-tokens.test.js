@@ -26,6 +26,20 @@ describe("token file helpers", () => {
     expect(loadTokenFile("nonexistent")).toEqual({});
   });
 
+  test.each([
+    "../outside",
+    "..\\outside",
+    "/absolute",
+    "C:\\outside",
+    "",
+    "with.dot",
+    "name:stream",
+  ])("should reject unsafe token name %s for reads, writes, and revocation", (name) => {
+    expect(() => loadTokenFile(name)).toThrow("Spec name");
+    expect(() => saveTokenFile(name, { tokens: {} })).toThrow("Spec name");
+    expect(() => clearTokenFile(name, { revokeAll: true })).toThrow("Spec name");
+  });
+
   test("saveTokenFile + loadTokenFile round-trips data", () => {
     const data = {
       tokens: { access_token: "abc", expires_in: 3600 },

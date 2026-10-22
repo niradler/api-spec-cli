@@ -5,8 +5,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { parseArgs } from "../args.js";
 import { out } from "../output.js";
 
-const SKILL_NAME = "api-spec-cli";
-const BUNDLED = join(dirname(fileURLToPath(import.meta.url)), "..", "skill", "SKILL.md");
+const SKILL_NAME = "spec-cli";
+const BUNDLED = join(
+  dirname(fileURLToPath(import.meta.url)),
+  ...(typeof Bun !== "undefined" && Bun.isStandaloneExecutable ? [] : [".."]),
+  "skill",
+  "SKILL.md"
+);
 
 function installDir() {
   return join(homedir(), ".claude", "skills", SKILL_NAME);

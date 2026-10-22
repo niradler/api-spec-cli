@@ -1,15 +1,18 @@
-import { homedir } from "os";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync } from "fs";
 import { expandSecrets } from "../secrets.js";
+import { GLOBAL_DIR } from "../paths.js";
 
-let TOKEN_DIR = join(homedir(), "spec-cli-config", "tokens");
+let TOKEN_DIR = join(GLOBAL_DIR, "tokens");
 
 export function setTokenDir(dir) {
   TOKEN_DIR = dir;
 }
 
 function tokenPath(name) {
+  if (typeof name !== "string" || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+    throw new Error("Spec name must contain only letters, numbers, hyphens, and underscores.");
+  }
   return join(TOKEN_DIR, `${name}.json`);
 }
 
@@ -29,8 +32,8 @@ export function loadTokenFile(name) {
 }
 
 function writeTokenFile(name, data) {
-  mkdirSync(TOKEN_DIR, { recursive: true });
   const file = tokenPath(name);
+  mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
   writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
   try {
     chmodSync(file, 0o600);

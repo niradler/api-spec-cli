@@ -320,7 +320,12 @@ describe("resolveConfig integration", () => {
     const { applyAuthFromFlags } = await import("../src/resolve.js?auth-from-apply");
     try {
       const entry = applyAuthFromFlags(
-        { _section: "openapi", type: "openapi", source: "https://api.example/openapi.json", config: {} },
+        {
+          _section: "openapi",
+          type: "openapi",
+          source: "https://api.example/openapi.json",
+          config: {},
+        },
         { "auth-from": "github-mcp" }
       );
       expect(entry.config.auth).toBe("mcp-access");

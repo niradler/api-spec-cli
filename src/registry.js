@@ -1,19 +1,17 @@
-import { homedir } from "os";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { getMetaCache, setMetaCache, removeMetaCache, removeCallCachesForSpec } from "./cache.js";
+import { GLOBAL_DIR } from "./paths.js";
 
-const REGISTRY_DIR = join(homedir(), "spec-cli-config");
+const REGISTRY_DIR = GLOBAL_DIR;
 const REGISTRY_FILE = join(REGISTRY_DIR, "registry.json");
 
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
-const EMPTY = { mcp: {}, openapi: {}, graphql: {} };
-
 export function getRegistry() {
-  if (!existsSync(REGISTRY_FILE)) return { ...EMPTY };
+  if (!existsSync(REGISTRY_FILE)) return { mcp: {}, openapi: {}, graphql: {} };
   try {
     const data = JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -28,7 +26,7 @@ export function getRegistry() {
 
 export function saveRegistry(registry) {
   ensureDir(REGISTRY_DIR);
-  writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
+  writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), { mode: 0o600 });
 }
 
 /**

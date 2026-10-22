@@ -1,5 +1,5 @@
-import { readFileSync } from "fs";
 import yargs from "yargs";
+import packageInfo from "../package.json" with { type: "json" };
 import { listOperations } from "./commands/list.js";
 import { showOperation } from "./commands/show.js";
 import { callOperation } from "./commands/call.js";
@@ -17,10 +17,9 @@ import { policyCmd } from "./commands/policy.js";
 import { loadDotenv } from "./dotenv.js";
 import { err, setFormat, setMaxStdout } from "./output.js";
 import { sweepCache } from "./cache.js";
+import { migrateLegacyHome } from "./paths.js";
 
-const { version: VERSION } = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8")
-);
+const { version: VERSION } = packageInfo;
 
 const HELP = `spec-cli — Explore and call APIs from the command line.
 Output is TOON by default. Designed for AI agents but works for humans too.
@@ -109,7 +108,7 @@ POLICY (deny rules evaluated on spec call):
   spec policy remove <id> [--spec <name>]
   spec policy clear [--spec <name>]
   spec policy add --local ...          Write .spec-cli/policy.json
-  --policies-path <dir>                Per-spec JSON folder (default ~/spec-cli-config/policies)
+  --policies-path <dir>                Per-spec JSON folder (default ~/.spec-cli/policies)
 
 OTHER:
   spec auth <name>                     Re-authenticate an OAuth-protected MCP spec
@@ -138,7 +137,7 @@ ENV VARS:
   SPEC_META_CACHE_MS=1800000      Tools/schema cache TTL (default 30m)
   SPEC_CALL_CACHE_MS=60000        Call result cache TTL (default 1m)
   SPEC_NO_DOTENV=1                Disable .env auto-loading
-  SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/spec-cli-config/results/
+  SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/.spec-cli/results/
 
 EXAMPLES:
   spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
@@ -373,6 +372,7 @@ function isVersionRequest(args) {
 }
 
 export async function run(argv) {
+  migrateLegacyHome();
   loadDotenv();
   sweepCache();
 
