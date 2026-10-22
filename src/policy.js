@@ -1,11 +1,11 @@
-import { homedir } from "os";
 import { join, dirname } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "fs";
 import { matchFilter } from "./glob.js";
+import { GLOBAL_DIR } from "./paths.js";
 
 const SPEC_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
-let POLICY_DIR = join(homedir(), "spec-cli-config");
+let POLICY_DIR = GLOBAL_DIR;
 let POLICIES_DIR = null;
 let LOCAL_POLICY_FILE = join(process.cwd(), ".spec-cli", "policy.json");
 

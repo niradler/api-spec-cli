@@ -16,7 +16,7 @@ export function readStore(name) {
 
 export function writeStore(name, data) {
   ensureDir();
-  writeFileSync(join(DIR, `${name}.json`), JSON.stringify(data, null, 2));
+  writeFileSync(join(DIR, `${name}.json`), JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 export function getConfig() {

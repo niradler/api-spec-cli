@@ -25,7 +25,7 @@ for target in "${targets[@]}"; do
 
   out="${DIST}/spec-${target}${ext}"
   echo "  -> $out"
-  bun build ./bin/spec.js --compile --target="$target" --outfile="$out"
+  bun build ./bin/spec.js --compile --asset ./src/skill --target="$target" --outfile="$out"
 done
 
 echo "Build complete. Files in ${DIST}/:"

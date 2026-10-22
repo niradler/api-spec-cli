@@ -42,11 +42,23 @@ export async function configCmd(args) {
 }
 
 // Support dotted keys: "headers.Authorization", "headers.X-API-Key"
-function setNestedValue(obj, key, value) {
+function configKeyParts(key) {
   const parts = key.split(".");
+  if (parts.some((part) => !part || ["__proto__", "prototype", "constructor"].includes(part))) {
+    throw new Error("Invalid config key.");
+  }
+  return parts;
+}
+
+function setNestedValue(obj, key, value) {
+  const parts = configKeyParts(key);
   let current = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (!(parts[i] in current) || typeof current[parts[i]] !== "object") {
+    if (
+      !Object.hasOwn(current, parts[i]) ||
+      current[parts[i]] === null ||
+      typeof current[parts[i]] !== "object"
+    ) {
       current[parts[i]] = {};
     }
     current = current[parts[i]];
@@ -55,7 +67,7 @@ function setNestedValue(obj, key, value) {
 }
 
 function getNestedValue(obj, key) {
-  const parts = key.split(".");
+  const parts = configKeyParts(key);
   let current = obj;
   for (const part of parts) {
     if (current == null) return undefined;
@@ -65,7 +77,7 @@ function getNestedValue(obj, key) {
 }
 
 function deleteNestedValue(obj, key) {
-  const parts = key.split(".");
+  const parts = configKeyParts(key);
   let current = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     if (current == null) return;

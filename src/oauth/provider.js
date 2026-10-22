@@ -1,17 +1,7 @@
 import { createServer } from "http";
-import { exec } from "child_process";
 import { randomUUID } from "crypto";
 import { loadTokenFile, saveTokenFile, getClientSecret } from "./tokens.js";
-
-function openBrowser(url) {
-  const cmd =
-    process.platform === "win32"
-      ? `start "" "${url}"`
-      : process.platform === "darwin"
-        ? `open "${url}"`
-        : `xdg-open "${url}"`;
-  exec(cmd);
-}
+import { openBrowser } from "./browser.js";
 
 function getAvailablePort() {
   return new Promise((resolve, reject) => {
@@ -27,7 +17,7 @@ function getAvailablePort() {
 /**
  * OAuthClientProvider for spec-cli.
  * Persists tokens, client registration, and discovery state to
- * ~/spec-cli-config/tokens/<name>.json.
+ * ~/.spec-cli/tokens/<name>.json.
  *
  * Flows:
  *   "browser" (default) — opens browser + local PKCE callback server

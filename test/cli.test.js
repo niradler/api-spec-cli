@@ -1,12 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import { resolve } from "path";
+import { resolve, join } from "path";
 import { execSync } from "child_process";
-import { readFileSync } from "fs";
+import { readFileSync, mkdirSync, mkdtempSync } from "fs";
+import { tmpdir } from "os";
 
 const bin = resolve(import.meta.dir, "../bin/spec.js");
 const fixture = resolve(import.meta.dir, "fixtures/openapi.json");
-// Use a throw-away home dir so tests never touch the real ~/spec-cli-config
-const testHome = resolve(import.meta.dir, "../.test-home");
+// Windows uses USERPROFILE for homedir(); isolate both home and project storage.
+const testHome = mkdtempSync(join(tmpdir(), "spec-cli-integration-"));
+const testProject = join(testHome, "project");
+mkdirSync(testProject);
 const pkgVersion = JSON.parse(
   readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")
 ).version;
@@ -14,8 +17,9 @@ const pkgVersion = JSON.parse(
 function run(args) {
   const result = execSync(`node ${bin} ${args} --format json`, {
     encoding: "utf-8",
-    cwd: resolve(import.meta.dir, ".."),
-    env: { ...process.env, HOME: testHome },
+    cwd: testProject,
+    env: { ...process.env, HOME: testHome, USERPROFILE: testHome },
+    timeout: 15000,
   });
   return JSON.parse(result.trim());
 }
@@ -23,8 +27,9 @@ function run(args) {
 function runRaw(args) {
   return execSync(`node ${bin} ${args}`, {
     encoding: "utf-8",
-    cwd: resolve(import.meta.dir, ".."),
-    env: { ...process.env, HOME: testHome },
+    cwd: testProject,
+    env: { ...process.env, HOME: testHome, USERPROFILE: testHome },
+    timeout: 15000,
   }).trim();
 }
 

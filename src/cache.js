@@ -1,4 +1,3 @@
-import { homedir } from "os";
 import { join } from "path";
 import {
   existsSync,
@@ -10,11 +9,12 @@ import {
   chmodSync,
 } from "fs";
 import { createHash } from "crypto";
+import { GLOBAL_DIR } from "./paths.js";
 
 const META_TTL_MS = 30 * 60 * 1000;
 const CALL_TTL_MS = 60 * 1000;
 
-let CACHE_DIR = join(homedir(), "spec-cli-config", "cache");
+let CACHE_DIR = join(GLOBAL_DIR, "cache");
 
 export function setCacheDir(dir) {
   CACHE_DIR = dir;

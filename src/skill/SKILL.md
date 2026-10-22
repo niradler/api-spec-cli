@@ -1,5 +1,5 @@
 ---
-name: api-spec-cli
+name: spec-cli
 description: Use when you need to explore or call an OpenAPI, GraphQL, or MCP API from the shell — register a spec once, search/list/inspect operations token-efficiently, then call them. Prefer this over loading whole specs or wiring an MCP client into context.
 ---
 
@@ -75,7 +75,7 @@ spec show --spec petstore getPetById --format yaml
 
 `toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Help and errors are always plain text.
 
-If a result is over 30000 characters, stdout is a stub with `cached: true` and `path` pointing at `~/spec-cli-config/results/*.json`. Read or `rg` that file instead of the full payload. `--max-bytes 0` disables this.
+If a result is over 30000 characters, stdout is a stub with `cached: true` and `path` pointing at `~/.spec-cli/results/*.json`. Read or `rg` that file instead of the full payload. `--max-bytes 0` disables this.
 
 ## Usage ranking
 

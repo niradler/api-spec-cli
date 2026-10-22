@@ -1,14 +1,14 @@
 import YAML from "yaml";
 import { encode } from "@toon-format/toon";
-import { homedir } from "os";
 import { join } from "path";
 import { mkdirSync, writeFileSync, chmodSync } from "fs";
+import { GLOBAL_DIR } from "./paths.js";
 
 const DEFAULT_MAX_STDOUT = 30000;
 
 let outputFormat = "toon";
 let maxStdout = parseMax(process.env.SPEC_MAX_STDOUT, DEFAULT_MAX_STDOUT);
-let resultsDir = join(homedir(), "spec-cli-config", "results");
+let resultsDir = join(GLOBAL_DIR, "results");
 
 function parseMax(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
