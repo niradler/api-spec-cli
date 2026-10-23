@@ -2,6 +2,59 @@
 
 CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is TOON by default — compact, parseable, token-efficient.
 
+## MCP gateway
+
+Run `spec mcp` to serve the registry to MCP clients. The gateway uses the official MCP SDK and the same execution, credentials, caches and policies as CLI calls.
+
+```bash
+spec mcp --specs github,petstore                    # stdio, meta mode
+spec mcp --mode tools --tools github.list_issues   # stdio, direct tools
+spec mcp --transport http --port 3000 --auth env:SPEC_GATEWAY_TOKEN --specs github,petstore
+spec mcp --config gateway.json
+```
+
+For HTTP, configure the MCP client with one of these URLs and an `Authorization: Bearer ...` header when authentication is enabled:
+
+```text
+http://127.0.0.1:3000/mcp
+http://127.0.0.1:3000/mcp?mode=meta&specs=github
+http://127.0.0.1:3000/mcp?mode=tools
+http://127.0.0.1:3000/mcp?mode=tools&specs=github,petstore
+http://127.0.0.1:3000/mcp?mode=tools&tools=github.list_issues,petstore.getPet
+```
+
+| URL parameter | Behavior |
+|---|---|
+| `mode=meta` | Default. Five fixed tools: `list_specs`, `list_tools`, `search_tools`, `get_tool`, `call_tool`. |
+| `mode=tools` | Directly expose permitted upstream operations with their argument schemas. |
+| `specs=a,b` | Exact registered spec names; omitted means all specs permitted by server configuration. |
+| `tools=a.tool1,b.tool2` | Exact qualified IDs (`spec.operation`); omitted means all tools within selected specs. |
+
+Both filters intersect. URL filters can only narrow operator configuration, enabled registry entries and existing allow/disable rules. Deny rules win. The same checks apply to search, schema lookup and direct calls, including cached catalogs. Unknown modes, unknown parameters, repeated parameters and empty filters are rejected. Unknown or forbidden tool IDs do not grant access. Selections are evaluated independently on every stateless HTTP request; clients retain their configured URL.
+
+Example `gateway.json` (all fields optional):
+
+```json
+{
+  "transport": "http",
+  "host": "127.0.0.1",
+  "port": 3000,
+  "auth": "env:SPEC_GATEWAY_TOKEN",
+  "specs": ["github", "petstore"],
+  "tools": ["github.list_issues", "petstore.getPet"],
+  "disabledTools": ["github.delete_issue"],
+  "allowedOrigins": []
+}
+```
+
+CLI options override the file. Without exposure lists, all enabled registered specs/tools are server-permitted; use explicit lists to fix the exposure boundary. Empty server lists expose nothing. `mode` selects stdio mode; HTTP mode comes from the URL and defaults to `meta`. `auth` accepts existing `env:NAME`, `${NAME}` and `file:/path` secret references; gateway authentication is independent of upstream credentials and is never forwarded upstream. Stdio uses local process access rather than HTTP bearer authentication. This is a shared bearer gate, not an OAuth login server or per-user authorization system.
+
+HTTP binds to loopback by default. Non-loopback binding requires `auth` and an explicit `allowedHosts` array of hostnames (without ports). Use HTTPS termination for remote deployment. Browser origins are denied unless listed in `allowedOrigins`. Request bodies are limited to 100 KiB, traffic to 300 requests/minute per IP, and simultaneous MCP requests to 100. A reverse proxy does not automatically become trusted for client-IP headers. Lifecycle logs go to `~/.spec-cli/logs/mcp.log`, or `logFile` from the config; use external log rotation. Stdio stdout contains only MCP protocol messages.
+
+Meta discovery returns at most 20 summaries by default; `offset` and `limit` (1–100) page results. `get_tool({"tool":"github.list_issues"})` returns its schema. `call_tool({"tool":"github.list_issues","arguments":{...}})` executes it. MCP arguments retain their original schema; OpenAPI uses an envelope with declared `path`, `query` and JSON `body`; GraphQL accepts declared field arguments and generates its query. Caller-supplied endpoints, auth overrides, shell commands and local file reads are not exposed. GraphQL subscriptions, external OpenAPI schema references, multipart uploads and per-call header/cookie parameters are not supported by this gateway. Existing automatic GraphQL scalar-field selection is retained. Direct MCP names include a readable prefix and stable hash suffix to handle invalid characters and naming collisions; descriptions include the qualified ID used in URL filters. Upstream tool content and structured results are preserved; OpenAPI response headers and local spill-file paths are not exposed. If a selected upstream catalog fails, discovery fails rather than silently publishing a partial catalog.
+
+OpenAPI query arrays use repeated keys by default (`tag=a&tag=b`), respecting form `explode: false`, space-delimited and pipe-delimited array settings. Object query serialization is unsupported.
+
 ## Install
 
 ```bash

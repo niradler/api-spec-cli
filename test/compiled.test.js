@@ -36,6 +36,29 @@ test("should boot, migrate, and install the skill from a standalone executable",
     expect(result.skill).toBe("spec-cli");
     expect(readFileSync(result.path, "utf8")).toContain("name: spec-cli");
     expect(execFileSync(bin, ["help"], options)).toContain("Explore and call APIs");
+    const gateway = execFileSync(
+      "node",
+      [
+        "--test",
+        "--test-reporter=tap",
+        "--test-name-pattern=launch real CLI stdio",
+        resolve(import.meta.dir, "support/gateway-check.mjs"),
+      ],
+      {
+        ...options,
+        timeout: 15000,
+        env: {
+          ...options.env,
+          SPEC_GATEWAY_BINARY: bin,
+          SPEC_NO_DOTENV: "1",
+          SPEC_NO_USAGE: "1",
+          SPEC_NO_CACHE: "1",
+          SPEC_NO_POLICY: "",
+          SPEC_URL: undefined,
+        },
+      }
+    );
+    expect(gateway).toContain("# fail 0");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

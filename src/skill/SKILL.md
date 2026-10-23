@@ -11,6 +11,8 @@ Install: `npm install -g api-spec-cli` (or `npx api-spec-cli <command>`).
 
 ## The workflow
 
+To serve registered specs to an MCP client, run `spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN --specs a,b`. HTTP `/mcp` defaults to `mode=meta`: use `list_specs`, `list_tools`/`search_tools`, `get_tool`, then `call_tool`. `/mcp?mode=tools` directly exposes allowed operations. Add `&specs=a,b&tools=a.tool1,b.tool2` to narrow the client URL. URL selections never widen server configuration, registry restrictions or call policies. For stdio select `--mode tools`; use `--config gateway.json` for server settings. Full configuration and limits are in the README's MCP gateway section.
+
 Work in four steps. Each step narrows what you load into context — never fetch a whole spec when you can grep then show one operation.
 
 1. **Register once** — `spec add <name> ...`. Fetches and caches; later commands hit the cache.

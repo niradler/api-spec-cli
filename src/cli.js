@@ -1,5 +1,6 @@
 import yargs from "yargs";
 import packageInfo from "../package.json" with { type: "json" };
+import { mcpCmd } from "./commands/mcp.js";
 import { listOperations } from "./commands/list.js";
 import { showOperation } from "./commands/show.js";
 import { callOperation } from "./commands/call.js";
@@ -110,6 +111,12 @@ POLICY (deny rules evaluated on spec call):
   spec policy add --local ...          Write .spec-cli/policy.json
   --policies-path <dir>                Per-spec JSON folder (default ~/.spec-cli/policies)
 
+GATEWAY:
+  spec mcp                            Serve registered specs over MCP stdio (meta mode)
+  spec mcp --transport http           Serve /mcp; use ?mode=tools for direct tools
+    Options: --config <file> --host <host> --port <port> --auth env:TOKEN
+             --mode meta|tools --specs a,b --tools a.tool1,b.tool2
+
 OTHER:
   spec auth <name>                     Re-authenticate an OAuth-protected MCP spec
   spec auth <name> --revoke            Clear stored OAuth token
@@ -173,6 +180,22 @@ const overrideOptions = {
 const sourceOptions = { ...specSourceOptions, ...overrideOptions };
 
 const commands = (rest) => [
+  {
+    command: "mcp",
+    describe: "Serve a configurable MCP gateway",
+    builder: (y) =>
+      y.options({
+        transport: { type: "string", choices: ["stdio", "http"] },
+        mode: { type: "string", choices: ["meta", "tools"] },
+        config: { type: "string" },
+        host: { type: "string" },
+        port: { type: "number" },
+        auth: { type: "string" },
+        specs: { type: "string" },
+        tools: { type: "string" },
+      }),
+    handler: () => mcpCmd(rest),
+  },
   {
     command: ["list", "ls"],
     describe: "List operations or tools for a spec",
