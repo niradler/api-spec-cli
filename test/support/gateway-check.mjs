@@ -381,7 +381,9 @@ test("should launch real CLI stdio in both modes against an isolated registry", 
   for (const mode of ["meta", "tools"]) {
     const command = process.env.SPEC_GATEWAY_BINARY || process.execPath;
     const args = [
-      ...(process.env.SPEC_GATEWAY_BINARY ? [] : [join(root, "bin/spec.js")]),
+      ...(process.env.SPEC_GATEWAY_BINARY
+        ? []
+        : [process.env.SPEC_GATEWAY_ENTRY || join(root, "bin/spec.js")]),
       "mcp",
       "--mode",
       mode,
