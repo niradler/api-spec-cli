@@ -3,11 +3,13 @@ import { writeFileSync, unlinkSync, mkdirSync, rmSync, existsSync } from "fs";
 import { readFileSync } from "fs";
 import { resolve, join } from "path";
 import { tmpdir } from "os";
-import { setPolicyDir, setLocalPolicyFile, setPoliciesDir } from "../src/policy.js";
-import { setCacheDir } from "../src/cache.js";
+import { setPolicyDir, setLocalPolicyFile, setPoliciesDir } from "../src/policy.ts";
+import { setCacheDir } from "../src/cache.ts";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -66,13 +68,23 @@ function mockFetch(responseData) {
 let currentSpec = mockGraphQL();
 let currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
 
-mock.module("../src/resolve.js", () => ({
-  resolveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
+function entryFor(spec) {
+  if (spec.type === "mcp")
+    return { name: "inline-test", _section: "mcp", type: "http", url: "https://mcp.test.com" };
+  return { name: "inline-test", _section: spec.type, type: spec.type, config: {} };
+}
+
+const realResolve = { ...(await import("../src/resolve.ts")) };
+mock.module("../src/resolve.ts", () => ({
+  ...realResolve,
+  resolveSpec: async () => ({ spec: currentSpec, entry: entryFor(currentSpec) }),
   resolveConfig: (_flags, _entry) => currentConfig,
 }));
 
 let mcpCallTool;
-mock.module("../src/mcp-client.js", () => ({
+const realMcpClient = { ...(await import("../src/mcp-client.ts")) };
+mock.module("../src/mcp-client.ts", () => ({
+  ...realMcpClient,
   createMcpClient: async () => ({
     callTool: async (args) => {
       mcpCallTool = args;
@@ -82,7 +94,7 @@ mock.module("../src/mcp-client.js", () => ({
   }),
 }));
 
-const { callOperation } = await import("../src/commands/call.js");
+const { callOperation } = await import("../src/commands/call.ts");
 
 const POLICY_DIR = join(tmpdir(), "spec-cli-test-call-policy-" + process.pid);
 const CACHE_DIR = join(tmpdir(), "spec-cli-test-call-cache-" + process.pid);

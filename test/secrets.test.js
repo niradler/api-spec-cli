@@ -9,7 +9,7 @@ import {
   envHeaderOverrides,
   envUrlOverride,
   mergeHeaders,
-} from "../src/secrets.js";
+} from "../src/secrets.ts";
 
 describe("expandSecrets", () => {
   afterEach(() => {
@@ -213,11 +213,11 @@ describe("resolveConfig integration", () => {
 
   test("expands ${VAR} in auth", async () => {
     process.env.MY_API_TOKEN = "live-token";
-    const { resolveConfig } = await import("../src/resolve.js?real");
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?real");
     const entry = { config: { auth: "${MY_API_TOKEN}" } };
     let config;
     try {
-      config = resolveConfig({}, entry);
+      config = resolveConfig(configOptionsFromFlags({}), entry);
     } catch {
       return;
     }
@@ -226,11 +226,11 @@ describe("resolveConfig integration", () => {
 
   test("expands ${VAR} in header values", async () => {
     process.env.MY_API_TOKEN = "hdr-token";
-    const { resolveConfig } = await import("../src/resolve.js?real");
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?real");
     const entry = { config: { headers: { "X-Api-Key": "${MY_API_TOKEN}" } } };
     let config;
     try {
-      config = resolveConfig({}, entry);
+      config = resolveConfig(configOptionsFromFlags({}), entry);
     } catch {
       return;
     }
@@ -240,12 +240,12 @@ describe("resolveConfig integration", () => {
 
   test("env header override sits above registry but below --header flag", async () => {
     process.env.SPEC_HEADER_X_TENANT = "env-tenant";
-    const { resolveConfig } = await import("../src/resolve.js?real");
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?real");
     const entry = { config: { headers: { "X-Tenant": "registry-tenant" } } };
 
     let configNoFlag;
     try {
-      configNoFlag = resolveConfig({}, entry);
+      configNoFlag = resolveConfig(configOptionsFromFlags({}), entry);
     } catch {
       return;
     }
@@ -254,7 +254,10 @@ describe("resolveConfig integration", () => {
 
     let configWithFlag;
     try {
-      configWithFlag = resolveConfig({ header: ["X-Tenant=flag-tenant"] }, entry);
+      configWithFlag = resolveConfig(
+        configOptionsFromFlags({ header: ["X-Tenant=flag-tenant"] }),
+        entry
+      );
     } catch {
       return;
     }
@@ -264,32 +267,47 @@ describe("resolveConfig integration", () => {
 
   test("graphql SPEC_URL overrides registry baseUrl but yields to --base-url flag", async () => {
     process.env.SPEC_URL = "https://env.example/gql";
-    const { resolveConfig } = await import("../src/resolve.js?real");
-    const entry = { type: "graphql", config: { baseUrl: "https://registry.example/gql" } };
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?real");
+    const entry = {
+      _section: "graphql",
+      type: "graphql",
+      config: { baseUrl: "https://registry.example/gql" },
+    };
 
-    expect(resolveConfig({}, entry).baseUrl).toBe("https://env.example/gql");
-    expect(resolveConfig({ "base-url": "https://flag.example/gql" }, entry).baseUrl).toBe(
-      "https://flag.example/gql"
+    expect(resolveConfig(configOptionsFromFlags({}), entry).baseUrl).toBe(
+      "https://env.example/gql"
     );
+    expect(
+      resolveConfig(configOptionsFromFlags({ "base-url": "https://flag.example/gql" }), entry)
+        .baseUrl
+    ).toBe("https://flag.example/gql");
   });
 
   test("SPEC_URL does not affect openapi baseUrl", async () => {
     process.env.SPEC_URL = "https://env.example/gql";
-    const { resolveConfig } = await import("../src/resolve.js?real");
-    const entry = { type: "openapi", config: { baseUrl: "https://registry.example/api" } };
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?real");
+    const entry = {
+      _section: "openapi",
+      type: "openapi",
+      config: { baseUrl: "https://registry.example/api" },
+    };
 
-    expect(resolveConfig({}, entry).baseUrl).toBe("https://registry.example/api");
+    expect(resolveConfig(configOptionsFromFlags({}), entry).baseUrl).toBe(
+      "https://registry.example/api"
+    );
   });
 
   test("--auth-from uses stored access_token as Bearer", async () => {
     const dir = join(tmpdir(), `spec-cli-auth-from-${process.pid}`);
     mkdirSync(dir, { recursive: true });
-    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.ts");
     setTokenDir(dir);
     saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
-    const { resolveConfig } = await import("../src/resolve.js?auth-from");
+    const { resolveConfig, configOptionsFromFlags } = await import("../src/resolve.ts?auth-from");
     try {
-      const config = resolveConfig({ "auth-from": "github-mcp" }, { config: {} });
+      const config = resolveConfig(configOptionsFromFlags({ "auth-from": "github-mcp" }), {
+        config: {},
+      });
       expect(config.headers.Authorization).toBe("Bearer mcp-access");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -299,12 +317,16 @@ describe("resolveConfig integration", () => {
   test("--auth wins over --auth-from", async () => {
     const dir = join(tmpdir(), `spec-cli-auth-from-win-${process.pid}`);
     mkdirSync(dir, { recursive: true });
-    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.ts");
     setTokenDir(dir);
     saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
-    const { resolveConfig } = await import("../src/resolve.js?auth-from-win");
+    const { resolveConfig, configOptionsFromFlags } =
+      await import("../src/resolve.ts?auth-from-win");
     try {
-      const config = resolveConfig({ auth: "explicit", "auth-from": "github-mcp" }, { config: {} });
+      const config = resolveConfig(
+        configOptionsFromFlags({ auth: "explicit", "auth-from": "github-mcp" }),
+        { config: {} }
+      );
       expect(config.headers.Authorization).toBe("Bearer explicit");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -314,10 +336,10 @@ describe("resolveConfig integration", () => {
   test("applyAuthFromFlags sets OpenAPI config.auth from stored token", async () => {
     const dir = join(tmpdir(), `spec-cli-auth-from-apply-${process.pid}`);
     mkdirSync(dir, { recursive: true });
-    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.js");
+    const { setTokenDir, saveTokenFile } = await import("../src/oauth/tokens.ts");
     setTokenDir(dir);
     saveTokenFile("github-mcp", { tokens: { access_token: "mcp-access" } });
-    const { applyAuthFromFlags } = await import("../src/resolve.js?auth-from-apply");
+    const { applyAuthFromFlags } = await import("../src/resolve.ts?auth-from-apply");
     try {
       const entry = applyAuthFromFlags(
         {

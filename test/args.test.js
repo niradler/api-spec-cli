@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { parseArgs, parseKV, parseLimit, parseOffset } from "../src/args.js";
+import { parseArgs, parseKV, parseLimit, parseOffset } from "../src/args.ts";
 
 describe("parseArgs", () => {
   test("parses positional args", () => {

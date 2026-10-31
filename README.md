@@ -1,6 +1,6 @@
 # api-spec-cli
 
-CLI for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. Output is TOON by default — compact, parseable, token-efficient.
+CLI and TypeScript SDK for AI agents to explore and call OpenAPI, GraphQL, and MCP APIs. CLI output is TOON by default — compact, parseable, token-efficient.
 
 ## MCP gateway
 
@@ -67,6 +67,48 @@ Works with Node.js 20.19+, 22.12+, or 23+. No other dependencies.
 # Or run without installing
 npx api-spec-cli <command>
 ```
+
+## SDK
+
+The package also exports a typed, side-effect-free library (`lib/index.js` + `.d.ts`). The CLI is a thin layer over it, so registry, credentials, caches, usage and policy behave the same in both.
+
+```ts
+import { createSpecClient, memoryRegistryStore } from "api-spec-cli";
+
+const client = createSpecClient();                                // ~/.spec-cli/registry.json
+const scoped = createSpecClient({ registry: memoryRegistryStore() }); // isolated, in-memory
+
+client.specs.add("petstore", { type: "openapi", source: "https://petstore3.swagger.io/api/v3/openapi.json" });
+client.specs.add("github", { type: "http", url: "https://api.githubcopilot.com/mcp/" });
+
+await client.operations.list("petstore");
+await client.operations.grep("issue*", { limit: 10 });
+await client.operations.call("petstore", "getPetById", { vars: { petId: "1" } });
+
+await client.close();
+```
+
+`client.tools` is the progressive-discovery catalog the MCP gateway is built on — list specs, search, describe one tool's JSON schema, then call it with validated arguments. Tool IDs are `spec.operation`; results are MCP `CallToolResult` objects.
+
+```ts
+const { tools } = createSpecClient({ scopes: [{ specs: ["github", "petstore"] }] });
+
+tools.specs();                                  // permitted registry entries
+await tools.search("issue");                    // [{ id: "github.list_issues", description, ... }]
+await tools.describe("petstore.getPetById");    // { id, spec, description, inputSchema }
+await tools.call("petstore.getPetById", { path: { petId: 1 } });
+```
+
+| Export | Purpose |
+|---|---|
+| `createSpecClient(options)` | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/grep/call), `tools`, `close` |
+| `createToolCatalog({ entries, load?, execute?, scopes? })` | Catalog over any entry source; `scopes` intersect and use exact tool IDs |
+| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection` | Embed the MCP gateway or its five meta-tools in another MCP server |
+| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec` | Pure building blocks used by the CLI commands |
+| `memoryRegistryStore`, `fileRegistryStore` | Registry backends; any `{ read, write }` object works |
+| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`) |
+
+Options accept `loadSpec` and `execute` overrides for tests or custom transports. Inline sources (`{ type: "openapi", source }`, `{ type: "stdio", command, args }`, …) can be passed anywhere a registered name is accepted by `operations.*`.
 
 ## How It Works
 

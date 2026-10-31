@@ -4,7 +4,9 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -36,35 +38,35 @@ function readReg() {
   return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
 }
 
-mock.module("../src/registry.js", () => ({
+const realRegistry = { ...(await import("../src/registry.ts")) };
+const registryMock = {
+  ...realRegistry,
   getRegistry: () => readReg(),
   saveRegistry: (reg) => {
     mkdirSync(testDir, { recursive: true });
     writeFileSync(REGISTRY_FILE, JSON.stringify(reg, null, 2));
   },
   allEntries: (registry) => allEntriesFromReg(registry),
-  getEntry: (name) => {
-    const reg = readReg();
-    const entry = allEntriesFromReg(reg).find((e) => e.name === name);
-    if (!entry) throw new Error(`No spec named '${name}'.`);
-    if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
-    return entry;
-  },
-  getCachedSpec: () => null,
-  saveCachedSpec: () => {},
-  removeCachedSpec: () => {},
-}));
+  getEntry: (name, registry = registryMock.getRegistry()) => realRegistry.getEntry(name, registry),
+};
+registryMock.fileRegistryStore = () => ({
+  read: registryMock.getRegistry,
+  write: registryMock.saveRegistry,
+});
+mock.module("../src/registry.ts", () => registryMock);
 
 // Token dir in temp directory
-import { setTokenDir, loadTokenFile, saveTokenFile } from "../src/oauth/tokens.js";
+import { setTokenDir, loadTokenFile, saveTokenFile } from "../src/oauth/tokens.ts";
 const TOKEN_DIR = join(testDir, "tokens");
 
 // Mock runOAuthFlow so auth tests don't need a real server
-mock.module("../src/oauth/auth-flow.js", () => ({
+const realOauthAuthFlow = { ...(await import("../src/oauth/auth-flow.ts")) };
+mock.module("../src/oauth/auth-flow.ts", () => ({
+  ...realOauthAuthFlow,
   runOAuthFlow: async (_name, _entry) => ({ flow: "browser" }),
 }));
 
-const { authCmd } = await import("../src/commands/auth.js");
+const { authCmd } = await import("../src/commands/auth.ts");
 
 beforeEach(() => {
   captured = null;

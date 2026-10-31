@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { recordUsage, getUsage, topOperations, allUsage, setUsageDir } from "../src/usage.js";
+import { recordUsage, getUsage, topOperations, allUsage, setUsageDir } from "../src/usage.ts";
 
 const TEST_DIR = join(tmpdir(), "spec-cli-test-usage-" + process.pid);
 

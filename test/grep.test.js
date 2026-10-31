@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -10,7 +12,6 @@ mock.module("../src/output.js", () => ({
   },
 }));
 
-// Registry mock with in-memory entries + cache
 let registryEntries = {};
 let specCache = {};
 
@@ -24,27 +25,27 @@ function allEntriesFromMock(registry) {
   return out;
 }
 
-mock.module("../src/registry.js", () => ({
+const realRegistry = { ...(await import("../src/registry.ts")) };
+const registryMock = {
+  ...realRegistry,
   getRegistry: () => registryEntries,
   saveRegistry: () => {},
   allEntries: (registry) => allEntriesFromMock(registry),
-  getEntry: (name) => {
-    const e = allEntriesFromMock(registryEntries).find((e) => e.name === name);
-    if (!e) throw new Error(`No spec named '${name}'`);
-    if (!e.enabled) throw new Error(`Spec '${name}' is disabled`);
-    return e;
-  },
-  getCachedSpec: (name) => specCache[name] || null,
-  saveCachedSpec: (name, spec) => {
-    specCache[name] = spec;
-  },
-  removeCachedSpec: () => {},
+  getEntry: (name, registry = registryMock.getRegistry()) => realRegistry.getEntry(name, registry),
+};
+registryMock.fileRegistryStore = () => ({
+  read: registryMock.getRegistry,
+  write: registryMock.saveRegistry,
+});
+mock.module("../src/registry.ts", () => registryMock);
+
+const realResolve = { ...(await import("../src/resolve.ts")) };
+mock.module("../src/resolve.ts", () => ({
+  ...realResolve,
+  loadSpec: async (entry, options) => specCache[entry.name] ?? realResolve.loadSpec(entry, options),
 }));
 
-// No mock for fetch.js — grepCmd uses getCachedSpec (all specs pre-loaded in specCache)
-// so fetchSpec is never called. matchGlob comes from src/glob.js (real, no mock).
-
-const { grepCmd } = await import("../src/commands/grep.js");
+const { grepCmd } = await import("../src/commands/grep.ts");
 
 const MCP_SPEC = {
   type: "mcp",

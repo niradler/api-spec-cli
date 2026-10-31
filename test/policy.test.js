@@ -4,7 +4,9 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -23,8 +25,8 @@ import {
   enforcePolicy,
   globalPolicyPath,
   serverPolicyPath,
-} from "../src/policy.js";
-import { policyCmd } from "../src/commands/policy.js";
+} from "../src/policy.ts";
+import { policyCmd } from "../src/commands/policy.ts";
 
 const TEST_DIR = join(tmpdir(), "spec-cli-test-policy-" + process.pid);
 const LOCAL_FILE = join(TEST_DIR, "local-policy.json");

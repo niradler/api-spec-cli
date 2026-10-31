@@ -2,7 +2,9 @@ import { describe, test, expect, mock } from "bun:test";
 import { resolve } from "path";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -11,7 +13,7 @@ mock.module("../src/output.js", () => ({
   },
 }));
 
-const { validateSpec } = await import("../src/commands/validate.js");
+const { validateSpec } = await import("../src/commands/validate.ts");
 const fixturesDir = resolve(import.meta.dir, "fixtures");
 
 describe("validate", () => {

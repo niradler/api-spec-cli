@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 
-const bin = resolve(import.meta.dir, "../bin/spec.js");
-const pathsUrl = new URL("../src/paths.js", import.meta.url).href;
+const bin = resolve(import.meta.dir, "../src/bin.ts");
+const pathsUrl = new URL("../src/paths.ts", import.meta.url).href;
 let home;
 let project;
 
