@@ -149,6 +149,7 @@ export function createGateway(
     entries: dependencies.entries ?? (() => allEntries(getRegistry())),
     load: dependencies.load,
     execute: dependencies.execute,
+    session: dependencies.session,
     scopes: [config, { specs: selection.specs, tools: selection.tools }],
   });
 }

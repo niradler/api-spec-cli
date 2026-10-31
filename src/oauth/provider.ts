@@ -31,8 +31,20 @@ function getAvailablePort(): Promise<number> {
   });
 }
 
+export class McpAuthRequiredError extends Error {
+  constructor(name: string) {
+    super(`MCP server '${name}' requires authorization. Run 'spec auth ${name}' first.`);
+    this.name = "McpAuthRequiredError";
+  }
+}
+
+export interface OAuthProviderOptions {
+  interactive?: boolean;
+}
+
 export class SpecCliOAuthProvider implements OAuthClientProvider {
   #name: string;
+  #interactive: boolean;
   #flow: OAuthFlow;
   #redirectPort: number | undefined;
   #fixedPort: number | undefined;
@@ -42,8 +54,13 @@ export class SpecCliOAuthProvider implements OAuthClientProvider {
   #oauthState: string | null = null;
   #clientId: string | undefined;
 
-  constructor(name: string, entry: OAuthEntryOptions = {}) {
+  constructor(
+    name: string,
+    entry: OAuthEntryOptions = {},
+    { interactive = true }: OAuthProviderOptions = {}
+  ) {
     this.#name = name;
+    this.#interactive = interactive;
     this.#flow = entry.oauthFlow || "browser";
     this.#clientId = entry.oauthClientId || undefined;
     const envPort = process.env.SPEC_OAUTH_CALLBACK_PORT
@@ -122,6 +139,7 @@ export class SpecCliOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void {
+    if (!this.#interactive) throw new McpAuthRequiredError(this.#name);
     if (this.#flow === "device") {
       process.stderr.write(
         `\nOpen this URL to authorize spec-cli:\n  ${authorizationUrl.toString()}\n\n`
@@ -135,6 +153,7 @@ export class SpecCliOAuthProvider implements OAuthClientProvider {
       resolveCode = resolve;
       rejectCode = reject;
     });
+    this.#pendingCode.catch(() => {});
 
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.#redirectPort}`);

@@ -14,7 +14,7 @@ export async function addCmd(args: string[]): Promise<void> {
   assertSpecName(name);
   const source = sourceFromFlags(flags);
   if (!source) throw new Error(SOURCE_USAGE);
-  const client = createSpecClient();
+  const client = createSpecClient({ interactiveAuth: true });
   const added = client.specs.add(name, source);
   await probeAndAuth(client, added);
   out({

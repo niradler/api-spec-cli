@@ -137,35 +137,36 @@ export function callCacheKey(parts: unknown): string {
   return hash(parts, 32);
 }
 
+export function metaCacheSpec(resolved: ResolvedEntry): string | null {
+  return resolved.name && !resolved.name.startsWith("inline-") ? resolved.name : null;
+}
+
 export function metaCacheKey(resolved: ResolvedEntry): string {
-  if (resolved.name && !resolved.name.startsWith("inline-")) return resolved.name;
   const entry = resolved as unknown as Record<string, unknown>;
   const config = (entry.config ?? {}) as Record<string, unknown>;
-  return (
-    "inline-" +
-    hash(
-      {
-        type: entry.type,
-        url: entry.url,
-        source: entry.source,
-        command: entry.command,
-        args: entry.args,
-        cwd: entry.cwd,
-        env: entry.env,
-        headers: entry.headers,
-        allowedTools: entry.allowedTools,
-        disabledTools: entry.disabledTools,
-        config: {
-          allowedTools: config.allowedTools,
-          disabledTools: config.disabledTools,
-          headers: config.headers,
-          auth: config.auth,
-          baseUrl: config.baseUrl,
-        },
+  const fingerprint = hash(
+    {
+      type: entry.type,
+      url: entry.url,
+      source: entry.source,
+      command: entry.command,
+      args: entry.args,
+      cwd: entry.cwd,
+      env: entry.env,
+      headers: entry.headers,
+      allowedTools: entry.allowedTools,
+      disabledTools: entry.disabledTools,
+      config: {
+        allowedTools: config.allowedTools,
+        disabledTools: config.disabledTools,
+        headers: config.headers,
+        auth: config.auth,
+        baseUrl: config.baseUrl,
       },
-      16
-    )
+    },
+    16
   );
+  return `${metaCacheSpec(resolved) ?? "inline"}-${fingerprint}`;
 }
 
 export function getMetaCache(key: string): SpecDocument | null {
@@ -182,10 +183,20 @@ export function getMetaCache(key: string): SpecDocument | null {
   return null;
 }
 
-export function setMetaCache(key: string, spec: SpecDocument): void {
+export function setMetaCache(
+  key: string,
+  spec: SpecDocument,
+  extra: { spec?: string | null } = {}
+): void {
   if (!enabled()) return;
   const file = metaFile(key);
-  writeCacheFile(file, { kind: "meta", cachedAt: Date.now(), ttl: metaTtl(), data: spec });
+  writeCacheFile(file, {
+    kind: "meta",
+    cachedAt: Date.now(),
+    ttl: metaTtl(),
+    spec: extra.spec || null,
+    data: spec,
+  });
   const legacy = legacyMetaFile(key);
   if (legacy !== file && existsSync(legacy)) remove(legacy);
 }
@@ -231,7 +242,18 @@ export function removeCallCachesForSpec(specName: string): void {
   }
 }
 
+export function removeMetaCachesForSpec(specName: string): void {
+  removeMetaCache(specName);
+  const dir = getCacheDir();
+  if (!specName || !existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    if (!name.startsWith("meta-") || !name.endsWith(".json")) continue;
+    const file = join(dir, name);
+    if (readRecord(file)?.spec === specName) remove(file);
+  }
+}
+
 export function removeCachedSpec(name: string): void {
-  removeMetaCache(name);
+  removeMetaCachesForSpec(name);
   removeCallCachesForSpec(name);
 }

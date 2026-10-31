@@ -6,7 +6,7 @@ export async function authCmd(args: string[]): Promise<void> {
   const { positional, flags } = parseArgs(args);
   const name = positional[0];
   if (!name) throw new Error("Usage: spec auth <name> [--revoke]");
-  const { specs } = createSpecClient();
+  const { specs } = createSpecClient({ interactiveAuth: true });
   if ("revoke" in flags) {
     specs.revoke(name);
     out({ ok: true, name, revoked: true });

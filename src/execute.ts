@@ -59,7 +59,9 @@ interface CallContext {
   data: string | undefined;
 }
 
-const HTTP_TIMEOUT = parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
+function httpTimeout(): number {
+  return parseInt(process.env.SPEC_HTTP_TIMEOUT ?? "30000");
+}
 
 function registeredName(entry: ResolvedEntry): string | undefined {
   return entry.name && !entry.name.startsWith("inline-") ? entry.name : undefined;
@@ -235,7 +237,7 @@ async function callOpenApi(
     method,
     headers,
     body,
-    signal: AbortSignal.timeout(HTTP_TIMEOUT),
+    signal: AbortSignal.timeout(httpTimeout()),
   });
   const payload: OpenApiCallResult = {
     status: res.status,
@@ -293,7 +295,7 @@ async function callGraphql(
     method: "POST",
     headers,
     body: JSON.stringify({ query, variables: sentVariables }),
-    signal: AbortSignal.timeout(HTTP_TIMEOUT),
+    signal: AbortSignal.timeout(httpTimeout()),
   });
   const responseBody = await readBody(res);
   const payload: GraphqlCallResult = {

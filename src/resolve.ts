@@ -1,5 +1,5 @@
 import { flagString, parseKV, type Flags } from "./args.ts";
-import { getMetaCache, metaCacheKey, setMetaCache } from "./cache.ts";
+import { getMetaCache, metaCacheKey, metaCacheSpec, setMetaCache } from "./cache.ts";
 import { fetchSpec } from "./fetch.ts";
 import { loadTokenFile } from "./oauth/tokens.ts";
 import { getEntry } from "./registry.ts";
@@ -79,7 +79,7 @@ export async function loadSpec(
   const cached = refresh ? null : getMetaCache(key);
   if (cached) return cached;
   const spec = await fetchSpec(entry);
-  setMetaCache(key, spec);
+  setMetaCache(key, spec, { spec: metaCacheSpec(entry) });
   return spec;
 }
 

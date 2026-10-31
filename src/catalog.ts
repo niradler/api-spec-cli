@@ -8,6 +8,7 @@ import {
   type OpenApiCallResult,
 } from "./execute.ts";
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
+import { createMcpSession, type McpSession } from "./mcp-client.ts";
 import { matchFilter } from "./glob.ts";
 import { operationId, operations, type SpecOperation } from "./operations.ts";
 import { enforcePolicy } from "./policy.ts";
@@ -48,6 +49,7 @@ export interface ToolCatalogOptions {
   load?: (entry: NamedEntry) => Promise<SpecDocument>;
   execute?: typeof executeOperation;
   scopes?: ToolScope[];
+  session?: McpSession;
 }
 
 export interface ToolCatalog {
@@ -57,6 +59,7 @@ export interface ToolCatalog {
   describe(tool: string | CatalogTool): Promise<ToolDescription>;
   search(query: string, spec?: string): Promise<CatalogTool[]>;
   call(id: string, args?: JsonObject): Promise<CallToolResult>;
+  close(): Promise<void>;
 }
 
 type ToolArgs = JsonObject & {
@@ -129,7 +132,7 @@ function callRequest(
         ])
       ),
       queryEntries: operationQuery(document, operation as OpenApiOperation, query),
-      ...(Object.hasOwn(args, "body") ? { data: args.body } : {}),
+      ...(Object.hasOwn(args, "body") ? { data: JSON.stringify(args.body) } : {}),
     };
   }
   if (document.type === "graphql")
@@ -152,8 +155,11 @@ function toolResult(document: SpecDocument, payload: unknown): CallToolResult {
 
 export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
   const scopes = options.scopes ?? [];
-  const load = options.load ?? ((entry: NamedEntry) => loadSpec(entry));
-  const execute = options.execute ?? executeOperation;
+  const session = options.session ?? createMcpSession();
+  const loadDocument = options.load ?? ((entry: NamedEntry) => loadSpec(entry));
+  const executeRequest = options.execute ?? executeOperation;
+  const load = (entry: NamedEntry) => session.run(() => loadDocument(entry));
+  const execute: typeof executeOperation = (...args) => session.run(() => executeRequest(...args));
 
   function specs(): NamedEntry[] {
     return options
@@ -239,5 +245,5 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return toolResult(tool.document, await execute(tool.document, tool.entry, target, request));
   }
 
-  return { specs, tools, find, describe, search, call };
+  return { specs, tools, find, describe, search, call, close: session.close };
 }

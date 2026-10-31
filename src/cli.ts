@@ -133,6 +133,7 @@ SECRETS & OVERRIDES:
   SPEC_HEADER_<NAME>=<value>      Add/override a header (SPEC_HEADER_X_TENANT -> X-Tenant)
 
 ENV VARS:
+  SPEC_HOME=~/.spec-cli           Home for registry, cache, tokens, policies and results
   MCP_MAX_RETRIES=3               Retry attempts on connection failure (default: 3)
   MCP_RETRY_DELAY=1000            Base retry delay in ms, doubles each attempt (default: 1000)
   SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
@@ -394,7 +395,7 @@ function isVersionRequest(args: string[]): boolean {
 }
 
 export async function run(argv: string[]): Promise<void> {
-  migrateLegacyHome();
+  if (!process.env.SPEC_HOME) migrateLegacyHome();
   loadDotenv();
   sweepCache();
 

@@ -23,12 +23,12 @@ http://127.0.0.1:3000/mcp?mode=tools&specs=github,petstore
 http://127.0.0.1:3000/mcp?mode=tools&tools=github.list_issues,petstore.getPet
 ```
 
-| URL parameter | Behavior |
-|---|---|
-| `mode=meta` | Default. Five fixed tools: `list_specs`, `list_tools`, `search_tools`, `get_tool`, `call_tool`. |
-| `mode=tools` | Directly expose permitted upstream operations with their argument schemas. |
-| `specs=a,b` | Exact registered spec names; omitted means all specs permitted by server configuration. |
-| `tools=a.tool1,b.tool2` | Exact qualified IDs (`spec.operation`); omitted means all tools within selected specs. |
+| URL parameter           | Behavior                                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `mode=meta`             | Default. Five fixed tools: `list_specs`, `list_tools`, `search_tools`, `get_tool`, `call_tool`. |
+| `mode=tools`            | Directly expose permitted upstream operations with their argument schemas.                      |
+| `specs=a,b`             | Exact registered spec names; omitted means all specs permitted by server configuration.         |
+| `tools=a.tool1,b.tool2` | Exact qualified IDs (`spec.operation`); omitted means all tools within selected specs.          |
 
 Both filters intersect. URL filters can only narrow operator configuration, enabled registry entries and existing allow/disable rules. Deny rules win. The same checks apply to search, schema lookup and direct calls, including cached catalogs. Unknown modes, unknown parameters, repeated parameters and empty filters are rejected. Unknown or forbidden tool IDs do not grant access. Selections are evaluated independently on every stateless HTTP request; clients retain their configured URL.
 
@@ -75,10 +75,13 @@ The package also exports a typed, side-effect-free library (`lib/index.js` + `.d
 ```ts
 import { createSpecClient, memoryRegistryStore } from "api-spec-cli";
 
-const client = createSpecClient();                                // ~/.spec-cli/registry.json
+const client = createSpecClient(); // ~/.spec-cli/registry.json
 const scoped = createSpecClient({ registry: memoryRegistryStore() }); // isolated, in-memory
 
-client.specs.add("petstore", { type: "openapi", source: "https://petstore3.swagger.io/api/v3/openapi.json" });
+client.specs.add("petstore", {
+  type: "openapi",
+  source: "https://petstore3.swagger.io/api/v3/openapi.json",
+});
 client.specs.add("github", { type: "http", url: "https://api.githubcopilot.com/mcp/" });
 
 await client.operations.list("petstore");
@@ -93,31 +96,41 @@ await client.close();
 ```ts
 const { tools } = createSpecClient({ scopes: [{ specs: ["github", "petstore"] }] });
 
-tools.specs();                                  // permitted registry entries
-await tools.search("issue");                    // [{ id: "github.list_issues", description, ... }]
-await tools.describe("petstore.getPetById");    // { id, spec, description, inputSchema }
+tools.specs(); // permitted registry entries
+await tools.search("issue"); // [{ id: "github.list_issues", description, ... }]
+await tools.describe("petstore.getPetById"); // { id, spec, description, inputSchema }
 await tools.call("petstore.getPetById", { path: { petId: 1 } });
 ```
 
-| Export | Purpose |
-|---|---|
-| `createSpecClient(options)` | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/grep/call), `tools`, `close` |
-| `createToolCatalog({ entries, load?, execute?, scopes? })` | Catalog over any entry source; `scopes` intersect and use exact tool IDs |
-| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection` | Embed the MCP gateway or its five meta-tools in another MCP server |
-| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec` | Pure building blocks used by the CLI commands |
-| `memoryRegistryStore`, `fileRegistryStore` | Registry backends; any `{ read, write }` object works |
-| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`) |
+| Export                                                                                      | Purpose                                                                                                                                     |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/grep/call), `tools`, `close` |
+| `createToolCatalog({ entries, load?, execute?, scopes?, session? })`                        | Catalog over any entry source; `scopes` intersect and use exact tool IDs                                                                    |
+| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection`  | Embed the MCP gateway or its five meta-tools in another MCP server                                                                          |
+| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec`     | Pure building blocks used by the CLI commands                                                                                               |
+| `createMcpSession({ interactiveAuth? })`                                                    | Scope MCP connections: `run(fn)` tracks clients opened inside `fn`, `close()` closes only those                                             |
+| `memoryRegistryStore`, `fileRegistryStore`                                                  | Registry backends; any `{ read, write }` object works                                                                                       |
+| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`)                                                                                    |
+| `setProjectDir(dir \| null)`                                                                | Where project config (`.spec-cli/config.json`) is read from; defaults to `cwd`, `null` disables it                                          |
 
 Options accept `loadSpec` and `execute` overrides for tests or custom transports. Inline sources (`{ type: "openapi", source }`, `{ type: "stdio", command, args }`, …) can be passed anywhere a registered name is accepted by `operations.*`.
+
+### Embedding in a service
+
+- **No browser auth.** SDK clients, catalogs and `startGatewayHttp` never open a browser or callback server. An MCP server that needs a new OAuth grant fails fast with `McpAuthRequiredError`; run `spec auth <name>` once (stored and refreshed tokens are used), configure `client_credentials`, or pass an `Authorization` header. Opt back in with `createSpecClient({ interactiveAuth: true })`.
+- **Lifecycle.** `client.close()` / `catalog.close()` close only the MCP connections that client opened, so several clients can share a process.
+- **Isolation.** Pass a `memoryRegistryStore()` per tenant; the spec cache is keyed by name plus source fingerprint, so equal names in different registries never share documents. Call `setProjectDir(null)` and `setLocalPolicyFile(<path>)` so the host's working directory cannot inject auth, base URLs or policies.
+- **Trusted sources only.** Headers, auth and stdio env expand `${VAR}`, `env:NAME` and `file:/path` from the host. Only register specs that come from operators, not from end users.
+- **Errors.** Library calls throw `Error`s; `tools.call` returns `isError` results for invalid arguments and error responses (HTTP ≥ 400, GraphQL `errors`, MCP `isError`), and throws for unknown tools, policy blocks and transport failures (the gateway converts those to a generic MCP error).
 
 ## How It Works
 
 Every command is stateless — you specify the spec source on each call. Two paths:
 
-| Path | When to use |
-|---|---|
+| Path            | When to use                                            |
+| --------------- | ------------------------------------------------------ |
 | `--spec <name>` | Registered spec — auto-fetches and caches on first use |
-| Inline flags | Ad-hoc — no registration, fetched each call |
+| Inline flags    | Ad-hoc — no registration, fetched each call            |
 
 ### Register once, use everywhere
 
@@ -193,14 +206,13 @@ spec grep metric --spec datadog --limit 10 --offset 10
 ```
 
 Compact output (`--format json` shown for readability):
+
 ```json
 {
   "type": "mcp",
   "total": 1,
   "showing": 1,
-  "operations": [
-    { "id": "search_agno", "description": "Search across the Agno knowledge base..." }
-  ]
+  "operations": [{ "id": "search_agno", "description": "Search across the Agno knowledge base..." }]
 }
 ```
 
@@ -294,11 +306,11 @@ Counts are stored locally in `~/.spec-cli/usage.json`. `--top` applies after `--
 
 Deny rules run on `spec call` only. Any matching **block** wins. Missing files = allow. `SPEC_NO_POLICY=1` skips checks.
 
-| File | When to use |
-|---|---|
-| `~/.spec-cli/policies/<spec>.json` | Common path — rules for one registered server |
-| `~/.spec-cli/policy.json` | Rules that apply across servers (globs, regex, no `--spec` name) |
-| `.spec-cli/policy.json` | Project-local (`--local`) |
+| File                               | When to use                                                      |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `~/.spec-cli/policies/<spec>.json` | Common path — rules for one registered server                    |
+| `~/.spec-cli/policy.json`          | Rules that apply across servers (globs, regex, no `--spec` name) |
+| `.spec-cli/policy.json`            | Project-local (`--local`)                                        |
 
 `--policies-path` overrides the per-spec folder (default `~/.spec-cli/policies`). A plain `--spec k8s` writes `policies/k8s.json`. A glob like `--spec k8s*` stays in the global file.
 
@@ -393,6 +405,7 @@ spec add <name> --graphql <url> \
 `--allow-tool` keeps only matching operations. `--disable-tool` removes matching operations (applied after allow). Both are repeatable.
 
 **Matching rules:**
+
 - Plain text → **exact match** (case-insensitive): `"me"` matches only `me`
 - Glob patterns → anchored match: `"get*"` matches `getPetById`, `"*post*"` matches `createPost`
 
@@ -448,13 +461,13 @@ Tokens are stored in `~/.spec-cli/tokens/<name>.json` — separate from the cach
 
 ### OAuth flags
 
-| Flag | Description |
-| --- | --- |
-| `--oauth-client-id <id>` | Skip DCR — use a pre-registered OAuth app client ID |
-| `--oauth-client-secret <secret>` | Use client credentials flow (machine/CI) |
-| `--oauth-callback-port <port>` | Fixed callback port (required for apps with exact redirect URL match, e.g. GitHub) |
-| `--oauth-flow device` | Force device authorization flow (headless/SSH) |
-| `--oauth-flow client_credentials` | Machine/CI flow (requires client id + secret) |
+| Flag                              | Description                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| `--oauth-client-id <id>`          | Skip DCR — use a pre-registered OAuth app client ID                                |
+| `--oauth-client-secret <secret>`  | Use client credentials flow (machine/CI)                                           |
+| `--oauth-callback-port <port>`    | Fixed callback port (required for apps with exact redirect URL match, e.g. GitHub) |
+| `--oauth-flow device`             | Force device authorization flow (headless/SSH)                                     |
+| `--oauth-flow client_credentials` | Machine/CI flow (requires client id + secret)                                      |
 
 Reuse a stored MCP OAuth access token on an OpenAPI or GraphQL call (only if the token audience matches):
 
@@ -527,6 +540,9 @@ MCP_RETRY_DELAY=1000    # Base delay in ms, doubles each attempt, capped at 5s (
 # HTTP timeout for OpenAPI/GraphQL calls
 SPEC_HTTP_TIMEOUT=30000 # ms (default: 30000)
 
+# Storage root for registry, cache, tokens, policies, results (default ~/.spec-cli)
+SPEC_HOME=/path/to/home
+
 # File cache (global, ~/.spec-cli/cache/)
 SPEC_NO_CACHE=1              # Disable meta + call cache
 SPEC_META_CACHE_MS=1800000   # Tools/schema TTL (default 30m)
@@ -541,17 +557,17 @@ spec add fs --mcp-stdio "npx -y server /tmp" --env "TOKEN=${MY_SECRET}"
 
 ## Storage
 
-| Path | Purpose |
-|---|---|
-| `~/.spec-cli/registry.json` | Global named registry |
-| `~/.spec-cli/cache/` | File cache: `meta-*` (30m tools/schema) and `call-*` (1m results). Expired files are deleted on the next command. |
-| `~/.spec-cli/tokens/<name>.json` | OAuth tokens per MCP entry |
-| `~/.spec-cli/usage.json` | Operation/tool call counts for `--top` and `spec usage` |
-| `~/.spec-cli/results/` | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT` |
-| `~/.spec-cli/policy.json` | Global call-blocking policy (rules across all servers) |
-| `~/.spec-cli/policies/<name>.json` | Per-spec policy file |
-| `.spec-cli/config.json` | Project-local config (baseUrl, auth, headers) |
-| `.spec-cli/policy.json` | Project-local policy rules (merged with global; any block wins) |
+| Path                               | Purpose                                                                                                           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `~/.spec-cli/registry.json`        | Global named registry                                                                                             |
+| `~/.spec-cli/cache/`               | File cache: `meta-*` (30m tools/schema) and `call-*` (1m results). Expired files are deleted on the next command. |
+| `~/.spec-cli/tokens/<name>.json`   | OAuth tokens per MCP entry                                                                                        |
+| `~/.spec-cli/usage.json`           | Operation/tool call counts for `--top` and `spec usage`                                                           |
+| `~/.spec-cli/results/`             | Full JSON for stdout that exceeded `SPEC_MAX_STDOUT`                                                              |
+| `~/.spec-cli/policy.json`          | Global call-blocking policy (rules across all servers)                                                            |
+| `~/.spec-cli/policies/<name>.json` | Per-spec policy file                                                                                              |
+| `.spec-cli/config.json`            | Project-local config (baseUrl, auth, headers)                                                                     |
+| `.spec-cli/policy.json`            | Project-local policy rules (merged with global; any block wins)                                                   |
 
 All global CLI data lives in `~/.spec-cli/`. On startup, an existing
 `~/spec-cli-config/` is renamed to `~/.spec-cli/` if the destination does not

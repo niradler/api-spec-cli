@@ -19,7 +19,7 @@ import {
   type GatewayDependencies,
   type GatewayMode,
 } from "./gateway.ts";
-import { closeMcpClients } from "./mcp-client.ts";
+import { createMcpSession } from "./mcp-client.ts";
 import { specHome } from "./paths.ts";
 import { expandSecrets } from "./secrets.ts";
 
@@ -113,6 +113,8 @@ export async function startGatewayHttp(
   dependencies: GatewayHttpDependencies = {}
 ): Promise<GatewayHttp> {
   const log = dependencies.log || gatewayLogger(config);
+  const session = dependencies.session ?? createMcpSession();
+  const gatewayDependencies = { ...dependencies, session };
   const loopback = ["localhost", "127.0.0.1", "::1"].includes(config.host);
   if (!loopback && (!config.auth || !config.allowedHosts?.length))
     throw new Error("Non-loopback HTTP requires auth and allowedHosts");
@@ -166,7 +168,7 @@ export async function startGatewayHttp(
       const url = new URL(req.originalUrl, "http://gateway.local");
       const selection = parseSelection(url.searchParams);
       if (draining || active.size >= 100) return res.status(503).json({ error: "Unavailable" });
-      server = createGatewayServer(selection, config, dependencies);
+      server = createGatewayServer(selection, config, gatewayDependencies);
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -219,7 +221,7 @@ export async function startGatewayHttp(
       draining = true;
       const closed = new Promise((resolve) => http.close(resolve));
       await Promise.allSettled([...active].map((server) => server.close()));
-      await closeMcpClients();
+      if (!dependencies.session) await session.close();
       http.closeAllConnections();
       await closed;
       log("stopped");

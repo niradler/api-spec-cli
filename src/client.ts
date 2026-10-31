@@ -1,7 +1,7 @@
 import { createToolCatalog, type ToolCatalog, type ToolScope } from "./catalog.ts";
 import { removeCachedSpec } from "./cache.ts";
 import { executeOperation, type CallRequest, type CallResult } from "./execute.ts";
-import { closeMcpClients } from "./mcp-client.ts";
+import { createMcpSession } from "./mcp-client.ts";
 import { runOAuthFlow, type OAuthFlowResult } from "./oauth/auth-flow.ts";
 import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
@@ -44,6 +44,7 @@ export interface SpecClientOptions {
   scopes?: ToolScope[];
   loadSpec?: SpecLoader;
   execute?: typeof executeOperation;
+  interactiveAuth?: boolean;
 }
 
 export interface SpecSummary {
@@ -93,6 +94,8 @@ export interface GrepResult {
 
 export interface SpecClient {
   specs: {
+    list(options?: SpecListOptions & { compact?: true }): SpecSummary[];
+    list(options: SpecListOptions & { compact: false }): NamedEntry[];
     list(options?: SpecListOptions): (SpecSummary | NamedEntry)[];
     get(name: string): NamedEntry;
     add(name: string, source: SpecSource): AddResult;
@@ -165,7 +168,11 @@ export function paginateGrep(
 
 export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
   const store = options.registry ?? fileRegistryStore();
-  const load = options.loadSpec ?? loadSpecDocument;
+  const session = createMcpSession({ interactiveAuth: options.interactiveAuth });
+  const loadDocument = options.loadSpec ?? loadSpecDocument;
+  const executeRequest = options.execute ?? executeOperation;
+  const load: SpecLoader = (entry, loadOptions) =>
+    session.run(() => loadDocument(entry, loadOptions));
 
   function lookup(name: string): NamedEntry {
     const entry = findEntry(store.read(), name);
@@ -195,18 +202,20 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     return { spec: await load(entry, loadOptions), entry };
   }
 
+  function listSpecs({ filter, compact = true }: SpecListOptions = {}) {
+    const needle = filter?.toLowerCase();
+    return allEntries(store.read())
+      .filter(
+        (entry) =>
+          !needle ||
+          entry.name.toLowerCase().includes(needle) ||
+          (entry.description && entry.description.toLowerCase().includes(needle))
+      )
+      .map((entry) => (compact ? summary(entry) : entry));
+  }
+
   const specs: SpecClient["specs"] = {
-    list({ filter, compact = true } = {}) {
-      const needle = filter?.toLowerCase();
-      return allEntries(store.read())
-        .filter(
-          (entry) =>
-            !needle ||
-            entry.name.toLowerCase().includes(needle) ||
-            (entry.description && entry.description.toLowerCase().includes(needle))
-        )
-        .map((entry) => (compact ? summary(entry) : entry));
-    },
+    list: listSpecs as SpecClient["specs"]["list"],
     get: lookup,
     add(name, source) {
       assertSpecName(name);
@@ -280,16 +289,17 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     async call(ref, target, request = {}) {
       const entry = withAuthFrom(entryFor(ref), request);
       const spec = await load(entry);
-      return await (options.execute ?? executeOperation)(spec, entry, target, request);
+      return await session.run(() => executeRequest(spec, entry, target, request));
     },
   };
 
   const tools = createToolCatalog({
     entries: () => allEntries(store.read()),
-    load: (entry) => load(entry),
-    execute: options.execute,
+    load: (entry) => loadDocument(entry),
+    execute: executeRequest,
     scopes: options.scopes,
+    session,
   });
 
-  return { specs, operations, tools, close: closeMcpClients };
+  return { specs, operations, tools, close: session.close };
 }

@@ -6,7 +6,7 @@ export type RegistryAction = "remove" | "enable" | "disable" | "refresh";
 
 export async function specsCmd(args: string[]): Promise<void> {
   const { flags } = parseArgs(args);
-  const specs = createSpecClient().specs.list({
+  const specs = createSpecClient({ interactiveAuth: true }).specs.list({
     filter: flagString(flags, "filter"),
     compact: flags.compact !== "false",
   });
@@ -16,7 +16,7 @@ export async function specsCmd(args: string[]): Promise<void> {
 export async function registryMutate(action: RegistryAction, args: string[]): Promise<void> {
   const name = parseArgs(args).positional[0];
   if (!name) throw new Error(`Usage: spec ${action} <name>`);
-  const { specs } = createSpecClient();
+  const { specs } = createSpecClient({ interactiveAuth: true });
   switch (action) {
     case "remove":
       specs.remove(name);

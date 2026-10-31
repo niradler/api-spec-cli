@@ -12,7 +12,7 @@ export async function grepCmd(args: string[]): Promise<void> {
         "  Plain text: substring match across name and description"
     );
   out(
-    await createSpecClient().operations.grep(pattern, {
+    await createSpecClient({ interactiveAuth: true }).operations.grep(pattern, {
       spec: flagString(flags, "spec"),
       offset: parseOffset(flags),
       limit: parseLimit(flags),

@@ -9,19 +9,30 @@ export interface ProjectConfig {
   [key: string]: unknown;
 }
 
-function storeDir(): string {
-  return join(process.cwd(), ".spec-cli");
+let projectDirOverride: string | null | undefined;
+
+export function setProjectDir(dir: string | null | undefined): void {
+  projectDirOverride = dir;
+}
+
+function storeDir(): string | null {
+  if (projectDirOverride === null) return null;
+  return join(projectDirOverride ?? process.cwd(), ".spec-cli");
 }
 
 export function readStore<T>(name: string): T | null {
-  const file = join(storeDir(), `${name}.json`);
+  const dir = storeDir();
+  if (!dir) return null;
+  const file = join(dir, `${name}.json`);
   if (!existsSync(file)) return null;
   return JSON.parse(readFileSync(file, "utf-8")) as T;
 }
 
 export function writeStore(name: string, data: unknown): void {
-  mkdirSync(storeDir(), { recursive: true });
-  writeFileSync(join(storeDir(), `${name}.json`), JSON.stringify(data, null, 2), { mode: 0o600 });
+  const dir = storeDir();
+  if (!dir) throw new Error("Project config is disabled");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${name}.json`), JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 export function getConfig(): ProjectConfig {

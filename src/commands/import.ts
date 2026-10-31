@@ -68,7 +68,7 @@ export async function importCmd(args: string[]): Promise<void> {
   const servers = serversFromConfig(data);
   if (!servers) throw new Error("No mcpServers or servers object in file");
 
-  const { specs } = createSpecClient();
+  const { specs } = createSpecClient({ interactiveAuth: true });
   const imported = Object.entries(servers).map(
     ([name, server]) => specs.add(registryName(name), sourceFromServer(name, server)).name
   );

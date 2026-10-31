@@ -87,8 +87,9 @@ export {
   putEntry,
 } from "./registry.ts";
 
-export { closeMcpClients, createMcpClient } from "./mcp-client.ts";
-export type { McpConnectTarget } from "./mcp-client.ts";
+export { closeMcpClients, createMcpClient, createMcpSession } from "./mcp-client.ts";
+export type { McpConnectTarget, McpSession, McpSessionOptions } from "./mcp-client.ts";
+export { McpAuthRequiredError } from "./oauth/provider.ts";
 
 export { matchGlob, matchFilter, applyToolFilter } from "./glob.ts";
 
@@ -101,5 +102,6 @@ export { setUsageDir } from "./usage.ts";
 export { setTokenDir } from "./oauth/tokens.ts";
 export { setPolicyDir, setPoliciesDir, setLocalPolicyFile } from "./policy.ts";
 export { setResultsDir } from "./output.ts";
+export { setProjectDir } from "./store.ts";
 
 export type * from "./types.ts";
