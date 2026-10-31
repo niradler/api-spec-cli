@@ -16,11 +16,12 @@ import {
   createGateway,
   directToolName,
   parseSelection,
-} from "../../src/gateway.js";
-import { gatewayConfig, startGatewayHttp } from "../../src/commands/mcp.js";
-import { setLocalPolicyFile } from "../../src/policy.js";
-import { fetchSpec } from "../../src/commands/fetch.js";
-import { operationSchema, operationQuery } from "../../src/gateway-schema.js";
+} from "../../src/gateway.ts";
+import { gatewayConfig, startGatewayHttp } from "../../src/gateway-http.ts";
+import { allEntries } from "../../src/registry.ts";
+import { setLocalPolicyFile } from "../../src/policy.ts";
+import { fetchSpec } from "../../src/fetch.ts";
+import { operationSchema, operationQuery } from "../../src/gateway-schema.ts";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -114,10 +115,8 @@ const registry = {
   graphql: { gql: { enabled: true, source: `${base}/graphql` } },
 };
 const dependencies = {
-  registry: () => registry,
-  resolve: async ({ spec }) => ({
-    spec: spec === "pets" ? api : spec === "gql" ? graphql : mcpSpec,
-  }),
+  entries: () => allEntries(registry),
+  load: async ({ name }) => (name === "pets" ? api : name === "gql" ? graphql : mcpSpec),
   log: () => {},
 };
 const config = {
@@ -155,7 +154,7 @@ test("should validate URL modes and reject malformed filters", () => {
   assert.equal(parseSelection(new URLSearchParams("mode=tools")).mode, "tools");
   for (const query of ["mode=bad", "tools=", "specs=a,,b", "mode=meta&mode=tools", "auth=x"])
     assert.throws(() => parseSelection(new URLSearchParams(query)));
-  assert.throws(() => gatewayConfig(["--port", "NaN"]));
+  assert.throws(() => gatewayConfig({ port: "NaN" }));
 });
 test("should advertise only five meta-tools and paginate compact discovery", async () => {
   const c = await client();
@@ -344,7 +343,7 @@ test("should sanitize upstream exceptions", async () => {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   const server = createGatewayServer({ mode: "meta" }, config, {
     ...dependencies,
-    resolve: async () => {
+    load: async () => {
       throw new Error("secret-token C:/private/file");
     },
   });
@@ -383,7 +382,7 @@ test("should launch real CLI stdio in both modes against an isolated registry", 
     const args = [
       ...(process.env.SPEC_GATEWAY_BINARY
         ? []
-        : [process.env.SPEC_GATEWAY_ENTRY || join(root, "bin/spec.js")]),
+        : [process.env.SPEC_GATEWAY_ENTRY || join(root, "src/bin.ts")]),
       "mcp",
       "--mode",
       mode,
@@ -432,11 +431,11 @@ test("should enforce operator tool allow and deny lists even against cached cata
     dependencies
   );
   assert.deepEqual(
-    (await gateway.catalog()).map((tool) => tool.id),
+    (await gateway.tools()).map((tool) => tool.id),
     ["upstream.echo"]
   );
   assert.deepEqual(
-    gateway.entries().map((entry) => entry.name),
+    gateway.specs().map((entry) => entry.name),
     ["upstream"]
   );
   await assert.rejects(gateway.find("upstream.fail"));
@@ -491,7 +490,7 @@ test("should paginate direct MCP catalogs without losing tool names", async () =
   const server = createGatewayServer(
     { mode: "tools" },
     { specs: ["upstream"] },
-    { ...dependencies, resolve: async () => ({ spec }) }
+    { ...dependencies, load: async () => spec }
   );
   const c = new Client({ name: "pagination", version: "1" });
   const [a, b] = InMemoryTransport.createLinkedPair();

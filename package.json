@@ -1,15 +1,27 @@
 {
   "name": "api-spec-cli",
-  "version": "0.3.0",
-  "description": "Agent-friendly CLI for exploring and calling OpenAPI and GraphQL APIs",
+  "version": "0.5.0",
+  "description": "Agent-friendly CLI and SDK for exploring and calling OpenAPI, GraphQL, and MCP APIs",
   "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
-    "spec": "bin/spec.js"
+    "spec": "lib/bin.js"
   },
   "scripts": {
+    "build": "node -e \"require('fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/skill','lib/skill',{recursive:true})\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "format": "prettier --write \"src/**/*.js\" \"test/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\"",
+    "prepack": "npm run build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.{js,mjs,ts}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.{js,mjs,ts}\"",
     "release": "bash release.sh"
   },
   "prettier": {
@@ -19,8 +31,7 @@
     "trailingComma": "es5"
   },
   "files": [
-    "bin/",
-    "src/",
+    "lib/",
     "README.md"
   ],
   "keywords": [
@@ -53,6 +64,11 @@
     "yargs": "^18.2.0"
   },
   "devDependencies": {
-    "prettier": "^3.9.10"
+    "@types/bun": "^1.4.4",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.19.0",
+    "@types/yargs": "^17.0.35",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
   }
 }

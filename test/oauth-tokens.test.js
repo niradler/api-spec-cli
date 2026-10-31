@@ -8,7 +8,7 @@ import {
   clearTokenFile,
   setTokenDir,
   getClientSecret,
-} from "../src/oauth/tokens.js";
+} from "../src/oauth/tokens.ts";
 
 const TEST_DIR = join(tmpdir(), "spec-cli-test-tokens-" + process.pid);
 

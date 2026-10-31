@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openBrowser } from "../src/oauth/browser.js";
+import { openBrowser } from "../src/oauth/browser.ts";
 
 describe("OAuth browser launch", () => {
   test.each(["linux", "darwin", "win32"])(

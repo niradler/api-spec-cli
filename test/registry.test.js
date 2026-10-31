@@ -4,7 +4,9 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -35,7 +37,9 @@ function allEntriesFromRegistry(registry) {
   return entries;
 }
 
-mock.module("../src/registry.js", () => ({
+const realRegistry = { ...(await import("../src/registry.ts")) };
+const registryMock = {
+  ...realRegistry,
   getRegistry: () => {
     if (!existsSync(REGISTRY_FILE)) return EMPTY_REGISTRY();
     return JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"));
@@ -45,36 +49,31 @@ mock.module("../src/registry.js", () => ({
     writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2));
   },
   allEntries: (registry) => allEntriesFromRegistry(registry),
-  getEntry: (name) => {
-    const registry = existsSync(REGISTRY_FILE)
-      ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8"))
-      : EMPTY_REGISTRY();
-    const entry = allEntriesFromRegistry(registry).find((e) => e.name === name);
-    if (!entry) throw new Error(`No spec named '${name}'.`);
-    if (!entry.enabled) throw new Error(`Spec '${name}' is disabled.`);
-    return entry;
-  },
-  getCachedSpec: (_name) => null,
-  saveCachedSpec: (_name, _spec) => {},
-  removeCachedSpec: (name) => {
-    const file = join(CACHE_DIR, `${name}.json`);
-    if (existsSync(file)) rmSync(file);
-  },
-}));
+  getEntry: (name, registry = registryMock.getRegistry()) => realRegistry.getEntry(name, registry),
+};
+registryMock.fileRegistryStore = () => ({
+  read: registryMock.getRegistry,
+  write: registryMock.saveRegistry,
+});
+mock.module("../src/registry.ts", () => registryMock);
 
 // Mock fetchSpec so refresh doesn't actually connect
-mock.module("../src/commands/fetch.js", () => ({
-  fetchSpec: async (entry) => ({
-    type: entry.type || "mcp",
-    tools: [{ name: "test_tool", description: "A test tool", inputSchema: null }],
-  }),
-  inlineEntryFromFlags: () => null,
+const realFetch = { ...(await import("../src/fetch.ts")) };
+mock.module("../src/fetch.ts", () => ({
+  ...realFetch,
+  fetchSpec: async (entry) =>
+    entry._section === "mcp"
+      ? {
+          type: "mcp",
+          tools: [{ name: "test_tool", description: "A test tool", inputSchema: null }],
+        }
+      : realFetch.fetchSpec(entry),
 }));
 
-const { addCmd } = await import("../src/commands/add.js");
-const { specsCmd, registryMutate } = await import("../src/commands/specs.js");
-const { importCmd } = await import("../src/commands/import.js");
-const { setTokenDir, saveTokenFile, loadTokenFile } = await import("../src/oauth/tokens.js");
+const { addCmd } = await import("../src/commands/add.ts");
+const { specsCmd, registryMutate } = await import("../src/commands/specs.ts");
+const { importCmd } = await import("../src/commands/import.ts");
+const { setTokenDir, saveTokenFile, loadTokenFile } = await import("../src/oauth/tokens.ts");
 
 beforeEach(() => {
   captured = null;
@@ -125,7 +124,7 @@ describe("spec add", () => {
     await addCmd(["fs2", "--mcp-stdio", "npx -y server /tmp", "--cwd", "/my/project"]);
     expect(captured.ok).toBe(true);
     // Verify cwd is stored in registry
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "fs2");
     expect(entry.cwd).toBe("/my/project");
   });
@@ -143,7 +142,7 @@ describe("spec add", () => {
       "delete_*",
     ]);
     expect(captured.ok).toBe(true);
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filtered");
     expect(entry.allowedTools).toEqual(["read_*", "list_*"]);
     expect(entry.disabledTools).toEqual(["delete_*"]);
@@ -160,7 +159,7 @@ describe("spec add", () => {
       "delete*",
     ]);
     expect(captured.ok).toBe(true);
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredapi");
     expect(entry.config.allowedTools).toEqual(["get*"]);
     expect(entry.config.disabledTools).toEqual(["delete*"]);
@@ -177,7 +176,7 @@ describe("spec add", () => {
       "publication",
     ]);
     expect(captured.ok).toBe(true);
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "filteredgql");
     expect(entry.config.allowedTools).toEqual(["me", "publication"]);
   });
@@ -225,7 +224,7 @@ describe("spec add", () => {
       ],
       { skipProbe: true }
     );
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "ci");
     expect(entry.oauthFlow).toBe("client_credentials");
     expect(entry.oauthClientId).toBe("cid");
@@ -326,7 +325,7 @@ describe("spec import", () => {
     expect(captured.ok).toBe(true);
     expect(captured.count).toBe(2);
     expect(captured.imported).toEqual(["fs", "docs"]);
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entries = allEntriesFromRegistry(getRegistry());
     expect(entries.find((e) => e.name === "fs").type).toBe("stdio");
     expect(entries.find((e) => e.name === "docs").type).toBe("http");
@@ -343,7 +342,7 @@ describe("spec import", () => {
       })
     );
     await importCmd([file]);
-    const { getRegistry } = await import("../src/registry.js");
+    const { getRegistry } = await import("../src/registry.ts");
     const entry = allEntriesFromRegistry(getRegistry()).find((e) => e.name === "remote");
     expect(entry.type).toBe("sse");
   });

@@ -14,7 +14,7 @@ const {
   setCallCache,
   callCacheKey,
   metaCacheKey,
-} = await import("../src/cache.js");
+} = await import("../src/cache.ts");
 
 beforeEach(() => {
   rmSync(dir, { recursive: true, force: true });

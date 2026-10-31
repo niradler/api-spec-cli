@@ -2,8 +2,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { setTokenDir, saveTokenFile, clearTokenFile, loadTokenFile } from "../src/oauth/tokens.js";
-import { SpecCliOAuthProvider } from "../src/oauth/provider.js";
+import { setTokenDir, saveTokenFile, clearTokenFile, loadTokenFile } from "../src/oauth/tokens.ts";
+import { SpecCliOAuthProvider } from "../src/oauth/provider.ts";
 
 const TEST_DIR = join(tmpdir(), "spec-cli-test-provider-" + process.pid);
 

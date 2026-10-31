@@ -5,3 +5,4 @@ bun.lockb
 .claude
 dist/
 docs/superpowers/
+lib/

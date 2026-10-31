@@ -4,7 +4,7 @@ import { execSync } from "child_process";
 import { readFileSync, mkdirSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 
-const bin = resolve(import.meta.dir, "../bin/spec.js");
+const bin = resolve(import.meta.dir, "../src/bin.ts");
 const fixture = resolve(import.meta.dir, "fixtures/openapi.json");
 // Windows uses USERPROFILE for homedir(); isolate both home and project storage.
 const testHome = mkdtempSync(join(tmpdir(), "spec-cli-integration-"));

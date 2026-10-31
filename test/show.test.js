@@ -3,7 +3,9 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 let captured;
-mock.module("../src/output.js", () => ({
+const realOutput = { ...(await import("../src/output.ts")) };
+mock.module("../src/output.ts", () => ({
+  ...realOutput,
   out: (data) => {
     captured = data;
   },
@@ -47,12 +49,14 @@ function mockGraphQL() {
 
 let currentSpec = null;
 
-mock.module("../src/resolve.js", () => ({
+const realResolve = { ...(await import("../src/resolve.ts")) };
+mock.module("../src/resolve.ts", () => ({
+  ...realResolve,
   resolveSpec: async (_flags) => ({ spec: currentSpec, entry: null }),
   resolveConfig: (_flags, _entry) => ({ baseUrl: null, headers: {}, auth: null }),
 }));
 
-const { showOperation } = await import("../src/commands/show.js");
+const { showOperation } = await import("../src/commands/show.ts");
 
 describe("show - OpenAPI", () => {
   beforeEach(() => {

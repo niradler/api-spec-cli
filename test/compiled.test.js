@@ -11,7 +11,7 @@ test("should boot, migrate, and install the skill from a standalone executable",
   try {
     execFileSync(
       "bun",
-      ["build", "./bin/spec.js", "--compile", "--asset", "./src/skill", "--outfile", bin],
+      ["build", "./src/bin.ts", "--compile", "--asset", "./src/skill", "--outfile", bin],
       {
         cwd: resolve(import.meta.dir, ".."),
         timeout: 30000,

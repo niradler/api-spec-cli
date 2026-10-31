@@ -27,14 +27,14 @@ function captureErr(fn) {
 }
 
 beforeEach(async () => {
-  ({ setFormat, out, err, setMaxStdout, setResultsDir } = await import("../src/output.js?real"));
+  ({ setFormat, out, err, setMaxStdout, setResultsDir } = await import("../src/output.ts?real"));
   setFormat("json");
   setMaxStdout(0);
 });
 
 describe("out - default format is toon", () => {
   test("fresh module encodes TOON without setFormat", async () => {
-    const { out: outDefault } = await import(`../src/output.js?default-${Date.now()}`);
+    const { out: outDefault } = await import(`../src/output.ts?default-${Date.now()}`);
     const data = { name: "Alice", age: 30 };
     const [output] = captureLog(() => outDefault(data));
     expect(output).toContain("name: Alice");

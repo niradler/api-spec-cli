@@ -1,7 +1,7 @@
 import { describe, test, expect, spyOn } from "bun:test";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { fetchSpec, inlineEntryFromFlags } from "../src/commands/fetch.js";
+import { fetchSpec, inlineEntryFromFlags } from "../src/fetch.ts";
 
 const fixture = resolve(import.meta.dir, "fixtures/openapi.json");
 

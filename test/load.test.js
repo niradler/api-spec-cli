@@ -2,14 +2,16 @@ import { describe, test, expect, mock } from "bun:test";
 
 // Mock mcp-client before fetch.js is imported in this file
 let mockTools = [];
-mock.module("../src/mcp-client.js", () => ({
+const realMcpClient = { ...(await import("../src/mcp-client.ts")) };
+mock.module("../src/mcp-client.ts", () => ({
+  ...realMcpClient,
   createMcpClient: async () => ({
     listTools: async () => ({ tools: mockTools }),
     close: async () => {},
   }),
 }));
 
-const { matchGlob, matchFilter } = await import("../src/glob.js");
+const { matchGlob, matchFilter } = await import("../src/glob.ts");
 
 // Simulate the filtering logic from applyFilter (uses matchFilter — exact or glob)
 function applyToolFilter(tools, allowedTools, disabledTools) {
