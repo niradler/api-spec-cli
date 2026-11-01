@@ -1,5 +1,6 @@
 import { flattenType } from "./graphql.ts";
 import { matchGlob } from "./glob.ts";
+import type { SearchDocument } from "./search.ts";
 import type {
   GraphqlOperation,
   GraphqlSpec,
@@ -171,31 +172,42 @@ export function listOperations(spec: SpecDocument, options: ListOptions = {}): O
   return result;
 }
 
+export function grepMatch(operation: SpecOperation): GrepMatch {
+  if ("inputSchema" in operation) return { id: operation.name, description: operation.description };
+  if ("path" in operation)
+    return { id: operation.id, method: operation.method, path: operation.path };
+  return { id: operation.name, kind: operation.kind };
+}
+
+function grepText(operation: SpecOperation): string[] {
+  if ("path" in operation) return [operation.id, operation.path, operation.summary || ""];
+  return [operation.name, operation.description || ""];
+}
+
+export function operationSearchDocument(id: string, operation: SpecOperation): SearchDocument {
+  return {
+    id,
+    name: "path" in operation ? operation.id : operation.name,
+    path:
+      "path" in operation
+        ? `${operation.method} ${operation.path}`
+        : "kind" in operation
+          ? operation.kind
+          : "",
+    summary: "summary" in operation ? operation.summary || "" : "",
+    description: operation.description || "",
+    tags: "tags" in operation ? (operation.tags || []).join(" ") : "",
+  };
+}
+
+export function operationMatches(operation: SpecOperation, pattern: string): boolean {
+  return grepText(operation).some((text) => text && matchGlob(pattern, text));
+}
+
 export function grepOperations(spec: SpecDocument, pattern: string): GrepMatch[] {
-  if (spec.type === "mcp") {
-    return spec.tools
-      .filter(
-        (tool) =>
-          matchGlob(pattern, tool.name) ||
-          (tool.description && matchGlob(pattern, tool.description))
-      )
-      .map((tool) => ({ id: tool.name, description: tool.description }));
-  }
-  if (spec.type === "openapi") {
-    return spec.operations
-      .filter(
-        (op) =>
-          matchGlob(pattern, op.id) ||
-          matchGlob(pattern, op.path) ||
-          (op.summary && matchGlob(pattern, op.summary))
-      )
-      .map((op) => ({ id: op.id, method: op.method, path: op.path }));
-  }
-  return spec.operations
-    .filter(
-      (op) => matchGlob(pattern, op.name) || (op.description && matchGlob(pattern, op.description))
-    )
-    .map((op) => ({ id: op.name, kind: op.kind }));
+  return operations(spec)
+    .filter((operation) => operationMatches(operation, pattern))
+    .map(grepMatch);
 }
 
 export function describeOperation(spec: SpecDocument, target: string): Record<string, unknown> {

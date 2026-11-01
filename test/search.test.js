@@ -163,6 +163,13 @@ describe("tool search ranking", () => {
     expect((await ids(tools, "merge pull request", "petstore")).length).toBe(0);
   });
 
+  test("glob queries filter ids, paths and summaries instead of ranking", async () => {
+    const tools = catalog({ petstore });
+    expect(await ids(tools, "get*ById")).toEqual(["petstore.getPetById", "petstore.getOrderById"]);
+    expect(await ids(tools, "/user/log*")).toEqual(["petstore.loginUser", "petstore.logoutUser"]);
+    expect(await ids(tools, `${"*a".repeat(120)}b`)).toEqual([]);
+  });
+
   test("reflects tool filter changes without a new catalog", async () => {
     const entries = [entry("petstore")];
     const tools = catalog({ petstore }, entries);

@@ -9,10 +9,16 @@ import {
 } from "./execute.ts";
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
 import { createMcpSession, type McpSession } from "./mcp-client.ts";
-import { matchFilter } from "./glob.ts";
-import { operationId, operations, type SpecOperation } from "./operations.ts";
+import { isGlob, matchFilter } from "./glob.ts";
+import {
+  operationId,
+  operationMatches,
+  operationSearchDocument,
+  operations,
+  type SpecOperation,
+} from "./operations.ts";
 import { enforcePolicy } from "./policy.ts";
-import { createSearchIndex, type SearchDocument, type SearchIndex } from "./search.ts";
+import { createSearchIndex, type SearchIndex } from "./search.ts";
 import { loadSpec } from "./resolve.ts";
 import type {
   JsonObject,
@@ -94,24 +100,6 @@ function scopeAllowsSpec(scope: ToolScope, name: string): boolean {
 function scopeAllowsTool(scope: ToolScope, id: string): boolean {
   if (scope.tools && !scope.tools.includes(id)) return false;
   return !scope.disabledTools?.includes(id);
-}
-
-function searchDocument(tool: CatalogTool): SearchDocument {
-  const operation = tool.operation;
-  const location =
-    "path" in operation
-      ? `${operation.method} ${operation.path}`
-      : "kind" in operation
-        ? operation.kind
-        : "";
-  return {
-    id: tool.id,
-    name: tool.id.slice(tool.spec.length + 1),
-    path: location,
-    summary: "summary" in operation ? operation.summary || "" : "",
-    description: tool.description,
-    tags: "tags" in operation ? (operation.tags || []).join(" ") : "",
-  };
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -243,13 +231,16 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const signature = found.map((tool) => tool.id).join("\n");
     const cached = searchIndexes.get(scope);
     if (cached?.signature === signature) return cached.index;
-    const index = createSearchIndex(found.map(searchDocument));
+    const index = createSearchIndex(
+      found.map((tool) => operationSearchDocument(tool.id, tool.operation))
+    );
     searchIndexes.set(scope, { signature, index });
     return index;
   }
 
   async function search(query: string, spec?: string): Promise<CatalogTool[]> {
     const found = await tools(spec);
+    if (isGlob(query)) return found.filter((tool) => operationMatches(tool.operation, query));
     const byId = new Map(found.map((tool) => [tool.id, tool]));
     return searchIndex(spec ?? "", found)
       .search(query)

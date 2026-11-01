@@ -57,7 +57,8 @@ export const metaTools: Tool[] = [
   },
   {
     name: "search_tools",
-    description: "Search permitted tool names and descriptions, optionally within a spec.",
+    description:
+      "Ranked full-text search over permitted tools (names, paths, descriptions, tags), optionally within a spec. Use * or ? for a glob match.",
     inputSchema: object({ query: text, spec: text, ...pagination }, ["query"]),
   },
   {

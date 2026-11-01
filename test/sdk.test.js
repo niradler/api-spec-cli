@@ -70,7 +70,7 @@ describe("createSpecClient specs", () => {
 });
 
 describe("createSpecClient operations", () => {
-  test("lists, shows and greps operations of a registered spec", async () => {
+  test("lists, shows and searches operations of a registered spec", async () => {
     const client = clientWithPets();
     const list = await client.operations.list("pets");
     expect(list.operations.map((op) => op.id)).toEqual(["listPets", "createPet", "getPet"]);
@@ -78,8 +78,12 @@ describe("createSpecClient operations", () => {
     const shown = await client.operations.show("pets", "getPet");
     expect(shown.path).toBe("/pets/{petId}");
 
-    const grep = await client.operations.grep("pet");
-    expect(grep.results[0].spec).toBe("pets");
+    const found = await client.operations.search("pet by id");
+    expect(found.results[0].spec).toBe("pets");
+    expect(found.results[0].matches[0].id).toBe("getPet");
+    expect((await client.tools.search("pet by id"))[0].id).toBe("pets.getPet");
+
+    const grep = await client.operations.grep("*pet*");
     expect(grep.total).toBe(3);
   });
 

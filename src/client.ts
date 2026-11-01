@@ -7,7 +7,7 @@ import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
   describeOperation,
   describeType,
-  grepOperations,
+  grepMatch,
   listOperations,
   listTypes,
   operations as specOperations,
@@ -112,7 +112,8 @@ export interface SpecClient {
     show(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
     types(ref: SpecRef): Promise<SpecTypes>;
     type(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
-    grep(pattern: string, options?: GrepOptions): Promise<GrepResult>;
+    search(query: string, options?: GrepOptions): Promise<GrepResult>;
+    grep(query: string, options?: GrepOptions): Promise<GrepResult>;
     call(ref: SpecRef, target: string, request?: CallRequest): Promise<CallResult>;
   };
   tools: ToolCatalog;
@@ -136,14 +137,31 @@ function requireRemoteMcp(entry: NamedEntry) {
   return entry;
 }
 
+interface GrepRow {
+  spec: string;
+  type: SpecType;
+  match: GrepMatch;
+}
+
 export function paginateGrep(
   pattern: string,
   groups: GrepGroup[],
+  options: PageOptions = {}
+): GrepResult {
+  return paginateRows(
+    pattern,
+    groups.flatMap((group) =>
+      group.matches.map((match) => ({ spec: group.spec, type: group.type, match }))
+    ),
+    options
+  );
+}
+
+function paginateRows(
+  pattern: string,
+  flat: GrepRow[],
   { offset = 0, limit = 0 }: PageOptions = {}
 ): GrepResult {
-  const flat = groups.flatMap((group) =>
-    group.matches.map((match) => ({ spec: group.spec, type: group.type, match }))
-  );
   let page = flat;
   if (offset > 0) page = page.slice(offset);
   if (limit > 0) page = page.slice(0, limit);
@@ -257,6 +275,32 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     },
   };
 
+  const tools = createToolCatalog({
+    entries: () => allEntries(store.read()),
+    load: (entry) => loadDocument(entry),
+    execute: executeRequest,
+    scopes: options.scopes,
+    session,
+  });
+
+  async function search(query: string, searchOptions: GrepOptions = {}): Promise<GrepResult> {
+    if (searchOptions.spec) {
+      const entry = getEntry(searchOptions.spec, store.read());
+      if (!entry.enabled) throw new Error(`Spec '${entry.name}' is disabled. Enable it first.`);
+    } else if (!allEntries(store.read()).some((entry) => entry.enabled))
+      throw new Error("No registered specs. Run 'spec add' first.");
+    const found = await tools.search(query, searchOptions.spec);
+    return paginateRows(
+      query,
+      found.map((tool) => ({
+        spec: tool.spec,
+        type: tool.document.type,
+        match: grepMatch(tool.operation),
+      })),
+      searchOptions
+    );
+  }
+
   const operations: SpecClient["operations"] = {
     load: loadRef,
     async list(ref, listOptions = {}) {
@@ -273,33 +317,14 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     async type(ref, target) {
       return describeType((await loadRef(ref)).spec, target);
     },
-    async grep(pattern, grepOptions = {}) {
-      const entries = grepOptions.spec
-        ? [getEntry(grepOptions.spec, store.read())]
-        : allEntries(store.read()).filter((entry) => entry.enabled);
-      if (entries.length === 0) throw new Error("No registered specs. Run 'spec add' first.");
-      const groups: GrepGroup[] = [];
-      for (const entry of entries) {
-        const spec = await load(entry);
-        const matches = grepOperations(spec, pattern);
-        if (matches.length > 0) groups.push({ spec: entry.name, type: spec.type, matches });
-      }
-      return paginateGrep(pattern, groups, grepOptions);
-    },
+    search,
+    grep: search,
     async call(ref, target, request = {}) {
       const entry = withAuthFrom(entryFor(ref), request);
       const spec = await load(entry);
       return await session.run(() => executeRequest(spec, entry, target, request));
     },
   };
-
-  const tools = createToolCatalog({
-    entries: () => allEntries(store.read()),
-    load: (entry) => loadDocument(entry),
-    execute: executeRequest,
-    scopes: options.scopes,
-    session,
-  });
 
   return { specs, operations, tools, close: session.close };
 }

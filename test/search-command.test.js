@@ -45,7 +45,7 @@ mock.module("../src/resolve.ts", () => ({
   loadSpec: async (entry, options) => specCache[entry.name] ?? realResolve.loadSpec(entry, options),
 }));
 
-const { grepCmd } = await import("../src/commands/grep.ts");
+const { searchCmd } = await import("../src/commands/search.ts");
 
 const MCP_SPEC = {
   type: "mcp",
@@ -87,9 +87,9 @@ beforeEach(() => {
   };
 });
 
-describe("grep - substring matching", () => {
+describe("search - ranked text", () => {
   test("matches MCP tool by name substring", async () => {
-    await grepCmd(["search"]);
+    await searchCmd(["search"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult).toBeDefined();
     expect(mcpResult.matches).toHaveLength(1);
@@ -97,81 +97,100 @@ describe("grep - substring matching", () => {
   });
 
   test("matches MCP tool by description substring", async () => {
-    await grepCmd(["page"]);
+    await searchCmd(["page"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult.matches.map((m) => m.id)).toContain("get_page");
   });
 
   test("matches OpenAPI operation by id", async () => {
-    await grepCmd(["createPet"]);
+    await searchCmd(["createPet"]);
     const apiResult = captured.results.find((r) => r.spec === "myapi");
     expect(apiResult.matches[0].id).toBe("createPet");
   });
 
   test("matches OpenAPI operation by path", async () => {
-    await grepCmd(["petId"]);
+    await searchCmd(["petId"]);
     const apiResult = captured.results.find((r) => r.spec === "myapi");
     expect(apiResult.matches[0].id).toBe("getPet");
   });
 
   test("matches GraphQL operation by name", async () => {
-    await grepCmd(["create"]);
+    await searchCmd(["create"]);
     const gqlResult = captured.results.find((r) => r.spec === "mygql");
     expect(gqlResult.matches[0].id).toBe("createPost");
   });
 
   test("case insensitive", async () => {
-    await grepCmd(["SEARCH"]);
+    await searchCmd(["SEARCH"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult.matches[0].id).toBe("search_docs");
   });
 
+  test("joins words into one ranked query", async () => {
+    await searchCmd(["create", "a", "pet"]);
+    expect(captured.pattern).toBe("create a pet");
+    expect(captured.results[0].spec).toBe("myapi");
+    expect(captured.results[0].matches[0].id).toBe("createPet");
+  });
+
   test("total counts all matches across specs", async () => {
-    await grepCmd(["e"]); // matches everything with 'e'
+    await searchCmd(["*e*"]);
     expect(captured.total).toBeGreaterThan(3);
   });
 });
 
-describe("grep - glob patterns", () => {
+describe("search - glob patterns", () => {
   test("* glob matches multiple tools", async () => {
-    await grepCmd(["*_docs"]);
+    await searchCmd(["*_docs"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult.matches[0].id).toBe("search_docs");
   });
 
   test("* prefix glob", async () => {
-    await grepCmd(["get*"]);
+    await searchCmd(["get*"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult.matches.map((m) => m.id)).toContain("get_page");
   });
 
+  test("glob with many stars stays fast", async () => {
+    const started = performance.now();
+    await searchCmd([`${"*a".repeat(120)}b`]);
+    expect(captured.total).toBe(0);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test("no match returns empty results", async () => {
-    await grepCmd(["zzz_nonexistent_zzz"]);
+    await searchCmd(["zzz_nonexistent_zzz"]);
     expect(captured.total).toBe(0);
     expect(captured.results).toHaveLength(0);
   });
 });
 
-describe("grep - --spec filter", () => {
+describe("search - --spec filter", () => {
   test("narrows to one spec", async () => {
-    await grepCmd(["search", "--spec", "mymcp"]);
+    await searchCmd(["search", "--spec", "mymcp"]);
     expect(captured.results).toHaveLength(1);
     expect(captured.results[0].spec).toBe("mymcp");
   });
 
   test("skips disabled specs when searching all", async () => {
     registryEntries.mcp.mymcp.enabled = false; // disable mymcp
-    await grepCmd(["search"]);
+    await searchCmd(["search"]);
     const mcpResult = captured.results.find((r) => r.spec === "mymcp");
     expect(mcpResult).toBeUndefined();
   });
 
+  test("rejects a disabled spec", async () => {
+    registryEntries.mcp.mymcp.enabled = false;
+    await expect(searchCmd(["search", "--spec", "mymcp"])).rejects.toThrow("disabled");
+  });
+
   test("throws on missing pattern", async () => {
-    await expect(grepCmd([])).rejects.toThrow("Usage");
+    await expect(searchCmd([])).rejects.toThrow("Usage");
   });
 
   test("--limit pages matches", async () => {
-    await grepCmd(["e", "--limit", "2"]);
+    await searchCmd(["*e*", "--limit", "2"]);
     expect(captured.total).toBeGreaterThan(2);
     expect(captured.showing).toBe(2);
     expect(captured.limit).toBe(2);

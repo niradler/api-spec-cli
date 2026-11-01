@@ -13,10 +13,10 @@ Install: `npm install -g api-spec-cli` (or `npx api-spec-cli <command>`).
 
 To serve registered specs to an MCP client, run `spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN --specs a,b`. HTTP `/mcp` defaults to `mode=meta`: use `list_specs`, `list_tools`/`search_tools`, `get_tool`, then `call_tool`. `/mcp?mode=tools` directly exposes allowed operations. Add `&specs=a,b&tools=a.tool1,b.tool2` to narrow the client URL. URL selections never widen server configuration, registry restrictions or call policies. For stdio select `--mode tools`; use `--config gateway.json` for server settings. Full configuration and limits are in the README's MCP gateway section.
 
-Work in four steps. Each step narrows what you load into context — never fetch a whole spec when you can grep then show one operation.
+Work in four steps. Each step narrows what you load into context — never fetch a whole spec when you can search then show one operation.
 
 1. **Register once** — `spec add <name> ...`. Fetches and caches; later commands hit the cache.
-2. **Search** — `spec grep <pattern>` across all specs, or `spec list --spec <name>` for one. Both return compact IDs only.
+2. **Search** — `spec search <query>` (ranked full-text) across all specs, or `spec list --spec <name>` for one. Both return compact IDs only.
 3. **Inspect one** — `spec show --spec <name> <op>` returns everything needed to call it (params, body, response, related types) in a single result.
 4. **Call** — `spec call --spec <name> <op> ...`.
 
@@ -37,16 +37,16 @@ Large MCP servers (Datadog-scale, 300+ tools) should never be dumped. Search, th
 
 ```bash
 spec specs --filter datadog          # find the registered server
-spec grep metric --spec datadog      # search tool names/descriptions (first 20)
-spec grep metric --spec datadog --limit 10 --offset 10
+spec search metric --spec datadog    # ranked search over tools (first 20)
+spec search metric --spec datadog --limit 10 --offset 10
 spec list --spec datadog --filter log --limit 20
 spec list --spec datadog --limit 0   # full catalog only if you really need it
 spec show --spec datadog <tool>      # one tool's schema
 ```
 
 ```bash
-spec grep search                 # substring match across every registered spec
-spec grep "get*"                 # glob
+spec search "delete a pet"       # ranked match across every enabled spec
+spec search "get*"               # glob
 spec list --spec petstore        # first 20 compact IDs
 spec list --spec petstore --filter pet --limit 10
 spec list --spec petstore --top 10   # the 10 most-called operations first
@@ -119,7 +119,7 @@ OAuth 2.1 MCP servers are handled automatically on `spec add` (browser flow open
 
 ```bash
 spec specs                     # list registered specs
-spec grep <pattern>            # search across all specs
+spec search <query>            # ranked search across all specs
 spec import <file>             # bulk-register from mcp.json
 spec list --spec <name>        # compact operation list
 spec show --spec <name> <op>   # full detail for one operation
