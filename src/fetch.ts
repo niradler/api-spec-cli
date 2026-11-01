@@ -1,15 +1,21 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import YAML from "yaml";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { applyToolFilter } from "./glob.ts";
 import { flattenType } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
+import { promptPolicyTarget, resourcePolicyTarget } from "./mcp-features.ts";
 import { specRequestHeaders } from "./secrets.ts";
 import type {
   GraphqlOperation,
   GraphqlOperationKind,
   GraphqlSpec,
   GraphqlType,
+  McpPrompt,
+  McpResource,
+  McpResourceTemplate,
   McpSpec,
   McpTool,
   OpenApiOperation,
@@ -76,7 +82,7 @@ fragment TypeRef on __Type {
   }
 }`;
 
-const MAX_TOOLS = 10000;
+const MAX_ITEMS = 10000;
 
 export async function fetchSpec(entry: ResolvedEntry): Promise<SpecDocument> {
   if (entry._section === "mcp") return await loadMcp(entry);
@@ -108,26 +114,130 @@ export async function fetchSpec(entry: ResolvedEntry): Promise<SpecDocument> {
   };
 }
 
+async function listAll<T>(
+  kind: string,
+  fetchPage: (params: { cursor?: string }) => Promise<{ items: T[]; nextCursor?: string }>
+): Promise<T[]> {
+  const items: T[] = [];
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await fetchPage(cursor ? { cursor } : {});
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (cursor && (cursors.has(cursor) || items.length > MAX_ITEMS))
+      throw new Error(`Invalid or oversized upstream ${kind} catalog`);
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+async function unlessUnsupported<T>(list: () => Promise<T[]>): Promise<T[] | undefined> {
+  try {
+    return await list();
+  } catch (error) {
+    if (error instanceof McpError && error.code === ErrorCode.MethodNotFound) return undefined;
+    throw error;
+  }
+}
+
+async function optionalFeature<T>(load: () => Promise<T>): Promise<{ value?: T; error?: string }> {
+  try {
+    return { value: await load() };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function loadMcpResources(client: Client) {
+  const resources = await unlessUnsupported(() =>
+    listAll("resource", async (params) => {
+      const page = await client.listResources(params);
+      return {
+        nextCursor: page.nextCursor,
+        items: page.resources.map((r): McpResource => ({
+          uri: r.uri,
+          name: r.name,
+          description: r.description || null,
+          mimeType: r.mimeType || null,
+        })),
+      };
+    })
+  );
+  const resourceTemplates = await unlessUnsupported(() =>
+    listAll("resource template", async (params) => {
+      const page = await client.listResourceTemplates(params);
+      return {
+        nextCursor: page.nextCursor,
+        items: page.resourceTemplates.map((t): McpResourceTemplate => ({
+          uriTemplate: t.uriTemplate,
+          name: t.name,
+          description: t.description || null,
+          mimeType: t.mimeType || null,
+        })),
+      };
+    })
+  );
+  return { resources, resourceTemplates };
+}
+
+async function loadMcpPrompts(client: Client): Promise<McpPrompt[] | undefined> {
+  return await unlessUnsupported(() =>
+    listAll("prompt", async (params) => {
+      const page = await client.listPrompts(params);
+      return {
+        nextCursor: page.nextCursor,
+        items: page.prompts.map((p): McpPrompt => ({
+          name: p.name,
+          description: p.description || null,
+          arguments: (p.arguments || []).map((a) => ({
+            name: a.name,
+            description: a.description || null,
+            required: a.required === true,
+          })),
+        })),
+      };
+    })
+  );
+}
+
 async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Promise<McpSpec> {
   const client = await createMcpClient(entry);
   try {
-    const tools: McpTool[] = [];
-    const cursors = new Set<string>();
-    let cursor: string | undefined;
-    do {
-      const page = await client.listTools(cursor ? { cursor } : {});
-      tools.push(
-        ...page.tools.map((t) => ({
-          name: t.name,
-          description: t.description || null,
-          inputSchema: (t.inputSchema as McpTool["inputSchema"]) || null,
-        }))
-      );
-      cursor = page.nextCursor;
-      if (cursor && (cursors.has(cursor) || tools.length > MAX_TOOLS))
-        throw new Error("Invalid or oversized upstream tool catalog");
-      if (cursor) cursors.add(cursor);
-    } while (cursor);
+    const tools =
+      (await unlessUnsupported(() =>
+        listAll("tool", async (params) => {
+          const page = await client.listTools(params);
+          return {
+            nextCursor: page.nextCursor,
+            items: page.tools.map((t): McpTool => ({
+              name: t.name,
+              description: t.description || null,
+              inputSchema: (t.inputSchema as McpTool["inputSchema"]) || null,
+            })),
+          };
+        })
+      )) ?? [];
+    const capabilities = client.getServerCapabilities() ?? {};
+    const resourceLoad = capabilities.resources
+      ? await optionalFeature(() => loadMcpResources(client))
+      : {};
+    const promptLoad = capabilities.prompts
+      ? await optionalFeature(() => loadMcpPrompts(client))
+      : {};
+    const allowed = (id: string) =>
+      applyToolFilter([id], (x) => x, entry.allowedTools, entry.disabledTools).length > 0;
+    const resources = resourceLoad.value?.resources?.filter((r) =>
+      allowed(resourcePolicyTarget(r.uri))
+    );
+    const resourceTemplates = resourceLoad.value?.resourceTemplates?.filter((t) =>
+      allowed(resourcePolicyTarget(t.uriTemplate))
+    );
+    const prompts = promptLoad.value?.filter((p) => allowed(promptPolicyTarget(p.name)));
+    const featureErrors = {
+      ...(resourceLoad.error ? { resources: resourceLoad.error } : {}),
+      ...(promptLoad.error ? { prompts: promptLoad.error } : {}),
+    };
 
     return {
       type: "mcp",
@@ -138,6 +248,10 @@ async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Prom
       args: entry.type === "stdio" ? entry.args : undefined,
       cwd: entry.type === "stdio" ? entry.cwd : undefined,
       tools: applyToolFilter(tools, (t) => t.name, entry.allowedTools, entry.disabledTools),
+      ...(resources ? { resources } : {}),
+      ...(resourceTemplates ? { resourceTemplates } : {}),
+      ...(prompts ? { prompts } : {}),
+      ...(Object.keys(featureErrors).length ? { featureErrors } : {}),
     };
   } finally {
     await client.close();

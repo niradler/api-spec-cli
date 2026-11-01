@@ -1,5 +1,6 @@
 import { flattenType } from "./graphql.ts";
 import { matchGlob } from "./glob.ts";
+import { featureCounts } from "./mcp-features.ts";
 import type { SearchDocument } from "./search.ts";
 import type {
   GraphqlOperation,
@@ -38,6 +39,8 @@ export interface OperationList {
   offset: number;
   operations: OperationSummary[];
   limit?: number;
+  resources?: number;
+  prompts?: number;
 }
 
 export interface GrepMatch {
@@ -171,7 +174,7 @@ export function listOperations(spec: SpecDocument, options: ListOptions = {}): O
     operations: items,
   };
   if (top === 0 && limit > 0 && items.length < total) result.limit = limit;
-  return result;
+  return { ...result, ...featureCounts(spec) };
 }
 
 export function operationSummary(operation: SpecOperation): string {

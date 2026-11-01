@@ -196,6 +196,32 @@ export interface McpTool {
   inputSchema: JsonSchema | null;
 }
 
+export interface McpResource {
+  uri: string;
+  name: string;
+  description: string | null;
+  mimeType: string | null;
+}
+
+export interface McpResourceTemplate {
+  uriTemplate: string;
+  name: string;
+  description: string | null;
+  mimeType: string | null;
+}
+
+export interface McpPromptArgument {
+  name: string;
+  description: string | null;
+  required: boolean;
+}
+
+export interface McpPrompt {
+  name: string;
+  description: string | null;
+  arguments: McpPromptArgument[];
+}
+
 export interface McpSpec {
   type: "mcp";
   title: string;
@@ -205,6 +231,10 @@ export interface McpSpec {
   args?: string[];
   cwd?: string;
   tools: McpTool[];
+  resources?: McpResource[];
+  resourceTemplates?: McpResourceTemplate[];
+  prompts?: McpPrompt[];
+  featureErrors?: { resources?: string; prompts?: string };
 }
 
 export type SpecDocument = OpenApiSpec | GraphqlSpec | McpSpec;

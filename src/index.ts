@@ -12,6 +12,8 @@ export type {
   SearchOptions,
   SearchHit,
   SearchResult,
+  ResourceReadOptions,
+  PromptGetOptions,
 } from "./client.ts";
 
 export { createToolCatalog, validateArguments, textResult, errorResult } from "./catalog.ts";
@@ -62,14 +64,19 @@ export type {
   SpecTypes,
 } from "./operations.ts";
 
-export { executeOperation } from "./execute.ts";
+export { executeOperation, readResource, getPrompt } from "./execute.ts";
 export type {
   CallRequest,
   CallResult,
   OpenApiCallResult,
   GraphqlCallResult,
   McpCallResult,
+  McpResourceResult,
+  McpPromptResult,
 } from "./execute.ts";
+
+export { listResources, listPrompts, resolveResourceUri, requirePrompt } from "./mcp-features.ts";
+export type { FeatureListOptions, ResourceList, PromptList } from "./mcp-features.ts";
 
 export { operationQuery, operationSchema } from "./gateway-schema.ts";
 

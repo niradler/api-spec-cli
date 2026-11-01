@@ -6,6 +6,8 @@ import { callOperation } from "./commands/call.ts";
 import { configCmd } from "./commands/config.ts";
 import { validateSpec } from "./commands/validate.ts";
 import { typesCmd } from "./commands/types.ts";
+import { resourcesCmd } from "./commands/resources.ts";
+import { promptsCmd } from "./commands/prompts.ts";
 import { addCmd } from "./commands/add.ts";
 import { specsCmd, registryMutate } from "./commands/specs.ts";
 import { searchCmd } from "./commands/search.ts";
@@ -109,6 +111,38 @@ const commands = (rest: string[]): CommandModule[] => [
         .positional("type", { type: "string", describe: "Type or schema name to inspect" })
         .options(sourceOptions),
     handler: () => typesCmd(rest),
+  },
+  {
+    command: ["resources [resource]", "resource [resource]"],
+    describe: "List MCP resources or read one",
+    builder: (y: Argv) =>
+      y
+        .positional("resource", { type: "string", describe: "Resource URI, name, or template" })
+        .options({
+          ...sourceOptions,
+          filter: { type: "string", describe: "Substring search across fields" },
+          limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
+          offset: { type: "string", describe: "Skip the first N results" },
+          var: { type: "string", array: true, describe: "Template variable k=v (repeatable)" },
+          "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
+        }),
+    handler: () => resourcesCmd(rest),
+  },
+  {
+    command: ["prompts [prompt]", "prompt [prompt]"],
+    describe: "List MCP prompts or get one",
+    builder: (y: Argv) =>
+      y.positional("prompt", { type: "string", describe: "Prompt name" }).options({
+        ...sourceOptions,
+        filter: { type: "string", describe: "Substring search across fields" },
+        limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
+        offset: { type: "string", describe: "Skip the first N results" },
+        var: { type: "string", array: true, describe: "Prompt argument k=v (repeatable)" },
+        data: { type: "string", describe: "Prompt arguments as JSON, or - for stdin" },
+        "data-file": { type: "string", describe: "Read prompt arguments from a file" },
+        "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
+      }),
+    handler: () => promptsCmd(rest),
   },
   {
     command: ["search <query..>", "grep <query..>"],
