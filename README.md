@@ -102,6 +102,8 @@ await tools.describe("petstore.getPetById"); // { id, spec, description, inputSc
 await tools.call("petstore.getPetById", { path: { petId: 1 } });
 ```
 
+`search` is full-text (BM25 via [MiniSearch](https://github.com/lucaong/minisearch)) over tool name, path, summary, description and tags. Names are split on camelCase and punctuation; stop words, plurals and common API verbs (remove → delete, fetch → get, sign in → login, repository → repo, pull request → pull) are normalized; prefix and typo matching are on. The index is built per catalog scope and reused until the permitted tool set changes. Queries are capped at 256 characters.
+
 | Export                                                                                      | Purpose                                                                                                                                     |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/grep/call), `tools`, `close` |
