@@ -107,6 +107,7 @@ export function resourcePolicyTarget(uri: string): string {
 }
 
 const UNRESERVED = /[A-Za-z0-9\-._~]/;
+const MAX_URI_LENGTH = 8192;
 
 function decodeUnreserved(uri: string): string {
   return uri.replace(/%([0-9a-f]{2})/gi, (escape, hex: string) => {
@@ -117,7 +118,10 @@ function decodeUnreserved(uri: string): string {
 
 function canonicalUri(uri: string): string {
   try {
-    return new URL(decodeUnreserved(uri)).href;
+    const url = new URL(decodeUnreserved(uri));
+    url.hash = "";
+    if (!url.search) url.search = "";
+    return url.href;
   } catch {
     return decodeUnreserved(uri);
   }
@@ -133,7 +137,8 @@ function fullyDecoded(uri: string): string {
 
 export function resourcePolicyTargets(uri: string): string[] {
   const canonical = canonicalUri(uri);
-  return [...new Set([uri, canonical, fullyDecoded(canonical)])].map(resourcePolicyTarget);
+  const decoded = fullyDecoded(canonical);
+  return [...new Set([uri, canonical, decoded, canonicalUri(decoded)])].map(resourcePolicyTarget);
 }
 
 export function promptPolicyTarget(name: string): string {
@@ -163,6 +168,13 @@ export function resolveResourceUri(
   target: string,
   vars: StringMap = {}
 ): string {
+  const uri = findResourceUri(spec, target, vars);
+  if (uri.length > MAX_URI_LENGTH)
+    throw new Error(`Resource URI exceeds ${MAX_URI_LENGTH} characters`);
+  return uri;
+}
+
+function findResourceUri(spec: SpecDocument, target: string, vars: StringMap): string {
   const mcp = requireMcpSpec(spec, "Resources");
   const lower = target.toLowerCase();
   const resource = mcp.resources?.find((r) => r.uri === target || r.name.toLowerCase() === lower);
@@ -182,7 +194,10 @@ export function resolveResourceUri(
 export function requirePrompt(spec: SpecDocument, name: string): McpPrompt {
   const prompts = exposedPrompts(spec);
   const lower = name.toLowerCase();
-  const prompt = prompts.find((p) => p.name.toLowerCase() === lower);
+  const folded = prompts.filter((p) => p.name.toLowerCase() === lower);
+  const prompt = prompts.find((p) => p.name === name) ?? (folded.length === 1 ? folded[0] : null);
+  if (folded.length > 1 && !prompt)
+    throw new Error(`Ambiguous prompt name: ${name}. Use the exact name from 'spec prompts'.`);
   if (!prompt)
     throw new Error(`Prompt not found: ${name}. Run 'spec prompts' to see available prompts.`);
   return prompt;

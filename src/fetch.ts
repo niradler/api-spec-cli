@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 import YAML from "yaml";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { applyToolFilter } from "./glob.ts";
+import { applyToolFilter, filterAllows } from "./glob.ts";
 import { flattenType } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
-import { promptPolicyTarget, resourcePolicyTarget } from "./mcp-features.ts";
+import { promptPolicyTarget, resourcePolicyTarget, resourcePolicyTargets } from "./mcp-features.ts";
 import { specRequestHeaders } from "./secrets.ts";
 import type {
   GraphqlOperation,
@@ -225,12 +225,13 @@ async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Prom
     const promptLoad = capabilities.prompts
       ? await optionalFeature(() => loadMcpPrompts(client))
       : {};
-    const allowed = (id: string) =>
-      applyToolFilter([id], (x) => x, entry.allowedTools, entry.disabledTools).length > 0;
+    const allowed = (...ids: string[]) =>
+      filterAllows(ids, entry.allowedTools, entry.disabledTools);
+    const templates = resourceLoad.value?.resourceTemplates;
     const resources = resourceLoad.value?.resources?.filter((r) =>
-      allowed(resourcePolicyTarget(r.uri))
+      allowed(...resourcePolicyTargets(r.uri))
     );
-    const resourceTemplates = resourceLoad.value?.resourceTemplates?.filter((t) =>
+    const resourceTemplates = templates?.filter((t) =>
       allowed(resourcePolicyTarget(t.uriTemplate))
     );
     const prompts = promptLoad.value?.filter((p) => allowed(promptPolicyTarget(p.name)));

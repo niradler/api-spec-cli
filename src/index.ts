@@ -16,7 +16,16 @@ export type {
   PromptGetOptions,
 } from "./client.ts";
 
-export { createToolCatalog, validateArguments, textResult, errorResult } from "./catalog.ts";
+export {
+  createToolCatalog,
+  validateArguments,
+  textResult,
+  errorResult,
+  formatResourceUri,
+  parseResourceUri,
+  formatPromptName,
+  parsePromptName,
+} from "./catalog.ts";
 export type {
   ToolCatalog,
   ToolCatalogOptions,
@@ -25,6 +34,9 @@ export type {
   CatalogSearchOptions,
   CatalogTool,
   ToolDescription,
+  CatalogResource,
+  CatalogResourceTemplate,
+  CatalogPrompt,
 } from "./catalog.ts";
 
 export {
@@ -82,6 +94,15 @@ export { operationQuery, operationSchema } from "./gateway-schema.ts";
 
 export { loadSpec, resolveEntry, resolveConfig, withAuthFrom } from "./resolve.ts";
 export type { ConfigOptions, ResolvedConfig } from "./resolve.ts";
+
+export {
+  LABEL_PATTERN,
+  MAX_LABELS,
+  isValidLabel,
+  matchesLabels,
+  normalizeLabels,
+} from "./labels.ts";
+export type { LabelMatch } from "./labels.ts";
 
 export { assertSpecName, entryFromSource, resolvedEntry, sectionOf } from "./sources.ts";
 

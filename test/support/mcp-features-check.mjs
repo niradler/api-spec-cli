@@ -3,13 +3,20 @@ import { after, describe, test } from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
+  allEntries,
+  createGatewayServer,
   createSpecClient,
+  entryFromSource,
   memoryRegistryStore,
+  parseSelection,
   setLocalPolicyFile,
   setPoliciesDir,
   setPolicyDir,
 } from "../../src/index.ts";
+import { requirePrompt } from "../../src/mcp-features.ts";
 
 const featuresServer = resolve(import.meta.dirname, "mcp-features-server.mjs");
 const partialServer = resolve(import.meta.dirname, "mcp-partial-server.mjs");
@@ -21,6 +28,21 @@ mkdirSync(policyDir, { recursive: true });
 setPolicyDir(policyDir);
 setLocalPolicyFile(join(policyDir, "local-policy.json"));
 setPoliciesDir(null);
+const unnamedOpsFixture = join(home, "unnamed-ops.json");
+writeFileSync(
+  unnamedOpsFixture,
+  JSON.stringify({
+    openapi: "3.0.0",
+    info: { title: "ids", version: "1" },
+    servers: [{ url: "http://127.0.0.1:9" }],
+    paths: {
+      "/pets/{id}": {
+        get: { parameters: [{ name: "id", in: "path", required: true }], responses: {} },
+      },
+      "/pets/mine": { get: { responses: {} } },
+    },
+  })
+);
 
 const client = createSpecClient({ registry: memoryRegistryStore() });
 client.specs.add("docs", { type: "stdio", command: "node", args: [featuresServer] });
@@ -43,6 +65,24 @@ client.specs.add("hidden", {
   command: "node",
   args: [featuresServer],
   disabledTools: ["resource:docs://pages/*"],
+});
+client.specs.add("templated", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  disabledTools: ["resource:docs://pages/{slug}"],
+});
+client.specs.add("public", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  allowedTools: ["resource:docs://pages/public*"],
+});
+client.specs.add("pinned", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  allowedTools: ["resource:docs://pages/intro"],
 });
 
 function withPolicy(rules) {
@@ -180,6 +220,51 @@ describe("tool filters and URI forms", () => {
     }
   });
 
+  test("filters and policies naming a template cover its expansions", async () => {
+    for (const uri of ["docs://pages/intro", "DOCS://pages/intro", "docs://pages/./intro"])
+      await assert.rejects(client.resources.read("templated", uri), /excluded/, uri);
+    assert.equal((await client.resources.read("templated", "readme")).uri, "docs://readme");
+    withPolicy([
+      { id: "no-pages", tool: "resource:docs://pages/{slug}", message: "pages blocked" },
+    ]);
+    try {
+      await assert.rejects(client.resources.read("docs", "DOCS://pages/intro"), /pages blocked/);
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("an allow-list must match every URI form", async () => {
+    assert.equal(
+      (await client.resources.read("public", "docs://pages/public-a")).uri,
+      "docs://pages/public-a"
+    );
+    for (const uri of [
+      "docs://pages/public/../secret",
+      "docs://pages/public%2F..%2Fsecret",
+      "docs://pages/public/%2e%2e/secret",
+    ])
+      await assert.rejects(client.resources.read("public", uri), /excluded/, uri);
+  });
+
+  test("template policies apply when the template was filtered out of the spec", async () => {
+    withPolicy([
+      { id: "no-pages", tool: "resource:docs://pages/{slug}", message: "pages blocked" },
+    ]);
+    try {
+      await assert.rejects(client.resources.read("pinned", "docs://pages/intro"), /pages blocked/);
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("rejects oversized resource URIs before matching", async () => {
+    await assert.rejects(
+      client.resources.read("docs", `docs://pages/${"a".repeat(9000)}`),
+      /exceeds 8192 characters/
+    );
+  });
+
   test("filter matches values, not field names", async () => {
     assert.equal((await client.resources.list("docs", { filter: "uri" })).total, 0);
   });
@@ -274,5 +359,299 @@ describe("unsupported specs", () => {
   test("reports servers without the capability", async () => {
     await assert.rejects(client.resources.list("echo"), /does not expose resources/);
     await assert.rejects(client.prompts.list("echo"), /does not expose prompts/);
+  });
+});
+
+describe("Gateway relay", () => {
+  const registry = {
+    mcp: {
+      docs: entryFromSource({
+        type: "stdio",
+        command: "node",
+        args: [featuresServer],
+        labels: ["team:docs"],
+      }),
+      hidden: entryFromSource({
+        type: "stdio",
+        command: "node",
+        args: [featuresServer],
+        disabledTools: ["resource:docs://pages/*", "prompt:summarize"],
+      }),
+      broken: entryFromSource({ type: "stdio", command: "node", args: [partialServer, "broken"] }),
+      echo: entryFromSource({ type: "stdio", command: "node", args: [echoServer] }),
+    },
+    openapi: {
+      pets: entryFromSource({ type: "openapi", source: openapiFixture }),
+      ids: entryFromSource({ type: "openapi", source: unnamedOpsFixture }),
+    },
+    graphql: {},
+  };
+
+  async function gateway(query = "", config = {}) {
+    const server = createGatewayServer(parseSelection(new URLSearchParams(query)), config, {
+      entries: () => allEntries(registry),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const mcp = new Client({ name: "relay-test", version: "1" });
+    await mcp.connect(clientTransport);
+    return { mcp, close: () => Promise.all([mcp.close(), server.close()]) };
+  }
+
+  async function withGateway(query, run, config) {
+    const { mcp, close } = await gateway(query, config);
+    try {
+      await run(mcp);
+    } finally {
+      await close();
+    }
+  }
+
+  test("namespaces resources, templates and prompts across specs", async () => {
+    await withGateway("", async (mcp) => {
+      assert.deepEqual(mcp.getServerCapabilities(), {
+        tools: {},
+        resources: {},
+        prompts: {},
+      });
+      assert.deepEqual((await mcp.listResources()).resources, [
+        {
+          uri: "spec://docs/docs://readme",
+          name: "readme",
+          description: "Project readme",
+          mimeType: "text/markdown",
+        },
+        {
+          uri: "spec://hidden/docs://readme",
+          name: "readme",
+          description: "Project readme",
+          mimeType: "text/markdown",
+        },
+      ]);
+      assert.deepEqual(
+        (await mcp.listResourceTemplates()).resourceTemplates.map((t) => t.uriTemplate),
+        ["spec://docs/docs://pages/{slug}"]
+      );
+      assert.deepEqual(
+        (await mcp.listPrompts()).prompts.map((p) => [p.name, p.arguments.map((a) => a.name)]),
+        [["docs.summarize", ["topic", "tone"]]]
+      );
+    });
+  });
+
+  test("reads resources and expanded templates with namespaced content URIs", async () => {
+    await withGateway("", async (mcp) => {
+      assert.deepEqual((await mcp.readResource({ uri: "spec://docs/docs://readme" })).contents, [
+        { uri: "spec://docs/docs://readme", mimeType: "text/markdown", text: "# Docs" },
+      ]);
+      const page = await mcp.readResource({ uri: "spec://docs/docs://pages/intro" });
+      assert.deepEqual(page.contents, [
+        { uri: "spec://docs/docs://pages/intro", text: "page:intro" },
+      ]);
+    });
+  });
+
+  test("gets prompts with arguments", async () => {
+    await withGateway("", async (mcp) => {
+      const result = await mcp.getPrompt({
+        name: "docs.summarize",
+        arguments: { topic: "labels" },
+      });
+      assert.equal(result.description, "Summary prompt");
+      assert.equal(result.messages[0].content.text, "Summarize labels");
+    });
+  });
+
+  test("rejects unknown, malformed, filtered and cross-spec targets", async () => {
+    await withGateway("", async (mcp) => {
+      for (const uri of [
+        "docs://readme",
+        "spec://missing/docs://readme",
+        "spec://pets/docs://readme",
+        "spec://hidden/docs://pages/intro",
+        "spec://hidden/docs://pages/x/../intro",
+        "spec://hidden/docs://pages/%69ntro",
+      ])
+        await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+      for (const name of ["summarize", "hidden.summarize", "docs.SUMMARIZE", "missing.summarize"])
+        await assert.rejects(
+          mcp.getPrompt({ name, arguments: { topic: "x" } }),
+          /Prompt unavailable/,
+          name
+        );
+      await assert.rejects(mcp.getPrompt({ name: "docs.summarize" }), /Prompt unavailable/);
+    });
+  });
+
+  test("enforces policy on relayed reads and prompts", async () => {
+    withPolicy([
+      { id: "no-secret", tool: "resource:docs://pages/secret*", message: "secret" },
+      { id: "no-summary", tool: "prompt:summarize", message: "prompt blocked" },
+    ]);
+    try {
+      await withGateway("", async (mcp) => {
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://docs/docs://pages/%73ecret" }),
+          /Resource unavailable/
+        );
+        await assert.rejects(
+          mcp.getPrompt({ name: "docs.summarize", arguments: { topic: "x" } }),
+          /Prompt unavailable/
+        );
+        assert.equal(
+          (await mcp.readResource({ uri: "spec://docs/docs://pages/public" })).contents[0].text,
+          "page:public"
+        );
+      });
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("fails listings instead of publishing a partial catalog", async () => {
+    registry.mcp.down = entryFromSource({
+      type: "stdio",
+      command: "node",
+      args: [join(home, "missing-server.mjs")],
+    });
+    try {
+      await withGateway("", async (mcp) => {
+        await assert.rejects(mcp.listResources(), /Unable to list available resources/);
+        await assert.rejects(mcp.listPrompts(), /Unable to list available prompts/);
+      });
+      await withGateway("specs=docs", async (mcp) => {
+        assert.equal((await mcp.listPrompts()).prompts.length, 1);
+      });
+    } finally {
+      delete registry.mcp.down;
+    }
+  });
+
+  test("applies URL and config scopes to resources and prompts", async () => {
+    await withGateway("labels=team:docs", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResources()).resources.map((r) => r.uri),
+        ["spec://docs/docs://readme"]
+      );
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://hidden/docs://readme" }),
+        /Resource unavailable/
+      );
+    });
+    await withGateway("tools=docs.resource:docs://readme", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResources()).resources.map((r) => r.uri),
+        ["spec://docs/docs://readme"]
+      );
+      assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
+      assert.deepEqual((await mcp.listPrompts()).prompts, []);
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://docs/docs://pages/intro" }),
+        /Resource unavailable/
+      );
+    });
+    await withGateway(
+      "",
+      async (mcp) => {
+        assert.deepEqual((await mcp.listPrompts()).prompts, []);
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://docs/docs://%72eadme" }),
+          /Resource unavailable/
+        );
+      },
+      { disabledTools: ["docs.prompt:summarize", "docs.resource:docs://readme"] }
+    );
+  });
+
+  test("accepts only exact concrete URIs so aliases cannot bypass scopes", async () => {
+    const aliases = [
+      "spec://docs/readme",
+      "spec://docs/README",
+      "spec://docs/docs://readme{?x}",
+      "spec://docs/page",
+      "spec://docs/docs://pages/{slug}",
+      "spec://docs/docs://pages/secret{?x}",
+    ];
+    await withGateway("", async (mcp) => {
+      for (const uri of aliases)
+        await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+    });
+    await withGateway(
+      "",
+      async (mcp) => {
+        for (const uri of [
+          ...aliases,
+          "spec://docs/docs://pages/secret",
+          "spec://docs/DOCS://pages/intro",
+          "spec://docs/docs://pages/./intro",
+          "spec://docs/docs://readme?",
+          "spec://docs/docs://readme#x",
+        ])
+          await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+        assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
+      },
+      { disabledTools: ["docs.resource:docs://readme", "docs.resource:docs://pages/{slug}"] }
+    );
+  });
+
+  test("gateway template denials apply when the template was filtered out of the spec", async () => {
+    await withGateway(
+      "specs=pinned",
+      async (mcp) => {
+        assert.deepEqual((await mcp.listResources()).resources, []);
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://pinned/docs://pages/intro" }),
+          /Resource unavailable/
+        );
+      },
+      { disabledTools: ["pinned.resource:docs://pages/{slug}"] }
+    );
+  });
+
+  test("operation IDs with braces are exact in gateway scopes", async () => {
+    await withGateway(
+      "mode=tools",
+      async (mcp) => {
+        const names = (await mcp.listTools()).tools.map((t) => t.name);
+        assert.equal(names.length, 1, names.join());
+        assert.doesNotMatch(names[0], /mine/);
+      },
+      { tools: ["ids.GET /pets/{id}"] }
+    );
+  });
+
+  test("an allowed template grants reads of its expansions only", async () => {
+    await withGateway("tools=docs.resource:docs://pages/{slug}", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResourceTemplates({ cursor: "" })).resourceTemplates.map(
+          (t) => t.uriTemplate
+        ),
+        ["spec://docs/docs://pages/{slug}"]
+      );
+      assert.equal(
+        (await mcp.readResource({ uri: "spec://docs/docs://pages/intro" })).contents[0].text,
+        "page:intro"
+      );
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://docs/docs://readme" }),
+        /Resource unavailable/
+      );
+    });
+  });
+
+  test("prefers an exact prompt name and rejects ambiguous case-folded names", () => {
+    const document = {
+      type: "mcp",
+      title: "case",
+      prompts: [
+        { name: "Admin", arguments: [] },
+        { name: "admin", arguments: [] },
+        { name: "Report", arguments: [] },
+      ],
+    };
+    assert.equal(requirePrompt(document, "admin").name, "admin");
+    assert.equal(requirePrompt(document, "Admin").name, "Admin");
+    assert.equal(requirePrompt(document, "report").name, "Report");
+    assert.throws(() => requirePrompt(document, "ADMIN"), /Ambiguous prompt name/);
   });
 });

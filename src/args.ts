@@ -1,6 +1,16 @@
 import type { StringMap } from "./types.ts";
 
-const REPEATABLE = new Set(["query", "header", "var", "env", "allow-tool", "disable-tool", "when"]);
+const REPEATABLE = new Set([
+  "query",
+  "header",
+  "var",
+  "env",
+  "allow-tool",
+  "disable-tool",
+  "when",
+  "label",
+]);
+const BOOLEAN = new Set(["all-labels"]);
 
 export type FlagValue = string | boolean | string[];
 
@@ -32,7 +42,10 @@ export function parseArgs(args: string[]): ParsedArgs {
     } else {
       key = arg.slice(2);
       const next = args[i + 1];
-      value = next === undefined || next.startsWith("--") ? true : args[++i]!;
+      const takesValue = BOOLEAN.has(key)
+        ? next === "true" || next === "false"
+        : next !== undefined && !next.startsWith("--");
+      value = takesValue ? args[++i]! : true;
     }
 
     if (REPEATABLE.has(key)) {
@@ -54,8 +67,16 @@ export function flagString(flags: Flags, key: string): string | undefined {
 
 export function flagList(flags: Flags, key: string): string[] | undefined {
   const value = flags[key];
-  if (value === undefined || typeof value === "boolean") return undefined;
-  return Array.isArray(value) ? value : [value];
+  if (value === undefined || value === false) return undefined;
+  const values: unknown[] = Array.isArray(value) ? value : [value];
+  if (!values.every((v): v is string => typeof v === "string"))
+    throw new Error(`--${key} requires a value`);
+  return values;
+}
+
+export function flagBool(flags: Flags, key: string): boolean {
+  const value = flags[key];
+  return value !== undefined && value !== false && value !== "false";
 }
 
 export const DEFAULT_PAGE_LIMIT = 20;

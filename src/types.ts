@@ -19,6 +19,7 @@ export type OAuthFlow = "browser" | "device" | "client_credentials";
 export interface EntryBase {
   enabled: boolean;
   description?: string;
+  labels?: string[];
 }
 
 export interface OpenApiEntry extends EntryBase {
@@ -74,6 +75,7 @@ export interface RegistryStore {
 
 interface SourceBase extends ToolFilter {
   description?: string;
+  labels?: string[];
 }
 
 export interface OpenApiSource extends SourceBase {

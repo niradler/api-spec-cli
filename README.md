@@ -9,6 +9,7 @@ Run `spec mcp` to serve the registry to MCP clients. The gateway uses the offici
 ```bash
 spec mcp --specs github,petstore                    # stdio, meta mode
 spec mcp --mode tools --tools github.list_issues   # stdio, direct tools
+spec mcp --labels orc:project=alpha                 # stdio, specs carrying a label
 spec mcp --transport http --port 3000 --auth env:SPEC_GATEWAY_TOKEN --specs github,petstore
 spec mcp --config gateway.json
 ```
@@ -28,9 +29,10 @@ http://127.0.0.1:3000/mcp?mode=tools&tools=github.list_issues,petstore.getPet
 | `mode=meta`             | Default. Five fixed tools: `list_specs`, `list_tools`, `search_tools`, `get_tool`, `call_tool`. |
 | `mode=tools`            | Directly expose permitted upstream operations with their argument schemas.                      |
 | `specs=a,b`             | Exact registered spec names; omitted means all specs permitted by server configuration.         |
-| `tools=a.tool1,b.tool2` | Exact qualified IDs (`spec.operation`); omitted means all tools within selected specs.          |
+| `tools=a.tool1,b.tool2` | Exact qualified IDs (`spec.operation`, or `spec.resource:<template>`); omitted means all tools. |
+| `labels=a,b`            | Only specs carrying any of these labels; specs outside the selection are never loaded.          |
 
-Both filters intersect. URL filters can only narrow operator configuration, enabled registry entries and existing allow/disable rules. Deny rules win. The same checks apply to search, schema lookup and direct calls, including cached catalogs. Unknown modes, unknown parameters, repeated parameters and empty filters are rejected. Unknown or forbidden tool IDs do not grant access. Selections are evaluated independently on every stateless HTTP request; clients retain their configured URL.
+All filters intersect. URL filters can only narrow operator configuration, enabled registry entries and existing allow/disable rules. Deny rules win. The same checks apply to search, schema lookup and direct calls, including cached catalogs. Unknown modes, unknown parameters, repeated parameters and empty filters are rejected. Unknown or forbidden tool IDs do not grant access. Selections are evaluated independently on every stateless HTTP request; clients retain their configured URL.
 
 Example `gateway.json` (all fields optional):
 
@@ -42,6 +44,7 @@ Example `gateway.json` (all fields optional):
   "auth": "env:SPEC_GATEWAY_TOKEN",
   "specs": ["github", "petstore"],
   "tools": ["github.list_issues", "petstore.getPet"],
+  "labels": ["orc"],
   "disabledTools": ["github.delete_issue"],
   "allowedOrigins": []
 }
@@ -52,6 +55,8 @@ CLI options override the file. Without exposure lists, all enabled registered sp
 HTTP binds to loopback by default. Non-loopback binding requires `auth` and an explicit `allowedHosts` array of hostnames (without ports). Use HTTPS termination for remote deployment. Browser origins are denied unless listed in `allowedOrigins`. Request bodies are limited to 100 KiB, traffic to 300 requests/minute per IP, and simultaneous MCP requests to 100. A reverse proxy does not automatically become trusted for client-IP headers. Lifecycle logs go to `~/.spec-cli/logs/mcp.log`, or `logFile` from the config; use external log rotation. Stdio stdout contains only MCP protocol messages.
 
 Meta discovery returns at most 20 summaries by default; `offset` and `limit` (1–100) page results. `get_tool({"tool":"github.list_issues"})` returns its schema. `call_tool({"tool":"github.list_issues","arguments":{...}})` executes it. MCP arguments retain their original schema; OpenAPI uses an envelope with declared `path`, `query` and JSON `body`; GraphQL accepts declared field arguments and generates its query. Caller-supplied endpoints, auth overrides, shell commands and local file reads are not exposed. GraphQL subscriptions, external OpenAPI schema references, multipart uploads and per-call header/cookie parameters are not supported by this gateway. Existing automatic GraphQL scalar-field selection is retained. Direct MCP names include a readable prefix and stable hash suffix to handle invalid characters and naming collisions; descriptions include the qualified ID used in URL filters. Upstream tool content and structured results are preserved; OpenAPI response headers and local spill-file paths are not exposed. If a selected upstream catalog fails, discovery fails rather than silently publishing a partial catalog.
+
+Both modes relay upstream MCP resources and prompts through the standard `resources` and `prompts` capabilities. Resource URIs and templates are namespaced as `spec://<spec>/<original-uri>` (for example `spec://docs/docs://pages/{slug}`), and prompt names as `<spec>.<prompt>`; URIs inside read results and prompt messages are rewritten the same way. Reads and prompt calls go through the same spec filters and policies as the CLI (`resource:<uri>` and `prompt:<name>`, with encoded and `..` forms normalized). Reads take concrete URIs only: resource names and template literals are rejected, and any other URI is checked against filters and policies in all its normalized forms. In `tools` URL filters and `disabledTools`, address them as `docs.resource:docs://readme`, `docs.resource:docs://pages/{slug}` (covers every expansion) or `docs.prompt:summarize`; a `tools` allow-list that names only tools hides every resource and prompt. These IDs share the tool namespace, so an upstream tool literally named `resource:...` or `prompt:...` is matched by the same rules. Listings load every selected MCP server (clients often list on connect, also in meta mode), are paged 100 at a time and, like tool discovery, fail rather than publish a partial list when a selected server is unavailable; narrow with `specs` or `labels` to keep connects fast.
 
 OpenAPI query arrays use repeated keys by default (`tag=a&tag=b`), respecting form `explode: false`, space-delimited and pipe-delimited array settings. Object query serialization is unsupported.
 
@@ -270,7 +275,7 @@ spec prompts --spec docs summarize --var topic=billing    # Rendered prompt mess
 spec prompts --spec docs summarize --data '{"topic":"billing"}'
 ```
 
-`spec list` on an MCP spec reports `resources` and `prompts` counts when the server advertises them, so agents know they exist. Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply with a kind prefix so tool rules don't catch them: resources match as `resource:<uri>` (`spec policy add --tool "resource:file:///etc/*"`) and prompts as `prompt:<name>`. The same names apply to `--allow-tool` / `--disable-tool`: an entry registered with `--allow-tool get_*` hides its resources and prompts unless you also allow, for example, `--allow-tool "resource:docs://*"`. Policy and tool-filter checks see the URI as given, normalized (dot segments, unreserved escapes) and percent-decoded, so an encoded or `..` variant can't slip past a rule. The server receives the URI unchanged. If listing resources or prompts fails, tools keep working and `spec resources` / `spec prompts` report the error. Reads share the call cache with tool calls.
+`spec list` on an MCP spec reports `resources` and `prompts` counts when the server advertises them, so agents know they exist. Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply with a kind prefix so tool rules don't catch them: resources match as `resource:<uri>` (`spec policy add --tool "resource:file:///etc/*"`) and prompts as `prompt:<name>`. The same names apply to `--allow-tool` / `--disable-tool`: an entry registered with `--allow-tool get_*` hides its resources and prompts unless you also allow, for example, `--allow-tool "resource:docs://*"`. Policy and tool-filter checks see the URI as given, normalized (dot segments, unreserved escapes) and percent-decoded, so an encoded or `..` variant can't slip past a rule, and a `resource:` pattern containing a template expression (`resource:docs://pages/{slug}`) matches every URI the template matches, in filters, policies and gateway scopes alike. `{slug}` stops at `/`, so a template allow-list hides URIs with an encoded slash in the variable; use `{+slug}` to admit them. Allow-lists must match every form of the URI; a deny on any form blocks it. Resource URIs over 8192 characters are rejected. The server receives the URI unchanged. If listing resources or prompts fails, tools keep working and `spec resources` / `spec prompts` report the error. Reads share the call cache with tool calls.
 
 ---
 
@@ -322,6 +327,21 @@ spec refresh <name>   # Force re-fetch and update cache
 ```
 
 `spec add` is an upsert — re-adding an existing name overwrites the entry (and clears its stale cache), since there's no separate `update` command. The response includes `"overwritten": true` when an existing entry was replaced.
+
+### Labels
+
+Tag specs to group and scope them. A label is 1-64 characters of `a-z 0-9 : = . _ -` (no uppercase, no silent lowercasing); a spec holds at most 32, stored deduplicated and sorted in the registry's optional `labels` field.
+
+```bash
+spec add petstore --openapi <url> --label orc --label orc:project=alpha   # repeatable
+spec label add petstore team:billing env=prod
+spec label remove petstore env=prod
+spec specs --label orc --label team:billing                # any match
+spec specs --label orc --label team:billing --all-labels   # every label
+spec search "delete a pet" --label orc:project=alpha       # combine with --spec: both must pass
+```
+
+SDK: `client.specs.list({ labels, labelMatch: "any" | "all" })`, `client.specs.addLabels(name, labels)`, `client.specs.removeLabels(name, labels)`, `client.operations.search(query, { labels, labelMatch })`, and `{ labels, labelMatch }` on a `ToolScope` so a catalog only loads and searches matching specs (an empty `labels` array in a scope matches nothing). The gateway accepts `?labels=a,b`, `--labels a,b` or `"labels"` in its config (any match). `normalizeLabels` and `matchesLabels` are exported.
 
 ## Usage Ranking
 

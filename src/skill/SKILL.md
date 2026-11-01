@@ -13,8 +13,8 @@ Install: `npm install -g api-spec-cli` (or `npx api-spec-cli <command>`).
 
 Works like `cli --help` → `cli <command> --help`: search returns one line per tool; `show` returns the full description and schema for the one you pick.
 
-1. **Register once** — `spec add <name> --openapi <url>` (or `--graphql`, `--mcp-http`, `--mcp-sse`, `--mcp-stdio "<cmd>"`). Fetched once, cached 30m.
-2. **Search** — `spec search <words>` → ranked hits `rank, spec, type, id, description` (one-line summary, same shape for every spec type). Page with `--limit` (default 20) / `--offset`; scope with `--spec a,b`.
+1. **Register once** — `spec add <name> --openapi <url>` (or `--graphql`, `--mcp-http`, `--mcp-sse`, `--mcp-stdio "<cmd>"`), optionally `--label <label>` (repeatable). Fetched once, cached 30m.
+2. **Search** — `spec search <words>` → ranked hits `rank, spec, type, id, description` (one-line summary, same shape for every spec type). Page with `--limit` (default 20) / `--offset`; scope with `--spec a,b` or `--label <label>` (any label; `--all-labels` for all).
 3. **Inspect one** — `spec show --spec <spec> <id>` → full description, params, body, responses / input schema.
 4. **Call** — `spec call --spec <spec> <id> --var k=v --query k=v --data '<json>'`.
 
@@ -34,7 +34,8 @@ Without registering, replace `--spec <name>` with an inline source on `list`/`sh
 ## Browse one spec
 
 ```bash
-spec specs                                 # registered specs
+spec specs --label orc:project=x           # registered specs, optionally by label
+spec label add|remove <name> <label...>    # labels: 1-64 chars of a-z 0-9 : = . _ -
 spec list --spec petstore                  # first 20 compact ids
 spec list --spec petstore --filter pet --tag pets --top 10
 spec types --spec petstore Pet             # one schema (OpenAPI/GraphQL)
@@ -69,7 +70,7 @@ Tools cached 30m, call results 1m. `spec refresh <name>` re-fetches one spec; `S
 
 ## MCP gateway
 
-`spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN`. Meta mode exposes `list_specs`, `list_tools` / `search_tools` (same ranked one-line hits, `spec`/`specs`/`limit`/`offset`), `get_tool` (full schema), `call_tool`. `?mode=tools` exposes tools directly; `&specs=a,b&tools=a.t1` narrows. See `spec mcp --help` and the README.
+`spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN`. Meta mode exposes `list_specs`, `list_tools` / `search_tools` (same ranked one-line hits, `spec`/`specs`/`limit`/`offset`), `get_tool` (full schema), `call_tool`. `?mode=tools` exposes tools directly; `&specs=a,b&tools=a.t1&labels=orc` narrows. MCP resources relay as `spec://<spec>/<uri>` and prompts as `<spec>.<prompt>`. See `spec mcp --help` and the README.
 
 ## Guardrails
 

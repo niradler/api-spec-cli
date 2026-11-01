@@ -1,4 +1,4 @@
-import { flagString, parseArgs } from "../args.ts";
+import { flagBool, flagList, flagString, parseArgs } from "../args.ts";
 import { createSpecClient } from "../client.ts";
 import { out } from "../output.ts";
 
@@ -9,6 +9,8 @@ export async function specsCmd(args: string[]): Promise<void> {
   const specs = createSpecClient({ interactiveAuth: true }).specs.list({
     filter: flagString(flags, "filter"),
     compact: flags.compact !== "false",
+    labels: flagList(flags, "label"),
+    labelMatch: flagBool(flags, "all-labels") ? "all" : "any",
   });
   out({ specs });
 }

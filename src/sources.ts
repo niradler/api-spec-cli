@@ -1,4 +1,5 @@
 import { flagList, flagString, parseKV, type Flags } from "./args.ts";
+import { normalizeLabels } from "./labels.ts";
 import { authorizationValue, hasHeader } from "./secrets.ts";
 import type {
   OAuthFlow,
@@ -49,9 +50,11 @@ function toolFilter(source: ToolFilter): ToolFilter {
 }
 
 export function entryFromSource(source: SpecSource): RegistryEntry {
+  const labels = normalizeLabels(source.labels);
   const base = {
     enabled: true,
     ...(source.description ? { description: source.description } : {}),
+    ...(labels.length ? { labels } : {}),
   };
   const filter = toolFilter(source);
   switch (source.type) {
@@ -119,9 +122,11 @@ export function sourceFromFlags(flags: Flags): SpecSource | null {
   });
   const description = flagString(flags, "description");
   const auth = flagString(flags, "auth");
+  const labels = flagList(flags, "label");
   const shared = {
     ...filter,
     ...(description ? { description } : {}),
+    ...(labels ? { labels } : {}),
     ...(auth ? { auth } : {}),
   };
   const headers = parseKV(flags.header);
@@ -132,6 +137,7 @@ export function sourceFromFlags(flags: Flags): SpecSource | null {
     return {
       ...filter,
       ...(description ? { description } : {}),
+      ...(labels ? { labels } : {}),
       type: "stdio",
       command: command!,
       args,

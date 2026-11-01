@@ -19,7 +19,8 @@ COMMANDS:
   resources [uri]    List MCP resources, or read one
   prompts [name]     List MCP prompts, or get one
   add <name>         Register a spec (auth, headers, OAuth)
-  specs              Registered specs
+  specs              Registered specs (filter with --label)
+  label              Add or remove labels on a spec
   refresh <name>     Re-fetch a spec (cache is 30m)
   remove | enable | disable <name>
   auth <name>        Re-authenticate an OAuth MCP spec
@@ -37,11 +38,12 @@ COMMANDS:
 const SOURCE = `Source: --spec <name> | --openapi <url-or-file> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio "<cmd>"`;
 
 const COMMAND_HELP: Record<string, string> = {
-  search: `spec search <query> [--spec a,b] [--limit 20] [--offset 0]
+  search: `spec search <query> [--spec a,b] [--label l] [--all-labels] [--limit 20] [--offset 0]
 Ranked full-text search over names, paths, summaries, descriptions and tags.
 Hits: rank, spec, type, id, description (one line). Next: spec show --spec <spec> <id>.
   spec search "delete a pet"             All enabled specs
   spec search issue --spec github,jira   Only these specs
+  spec search issue --label team:billing   Only specs with that label (--all-labels: every one)
   spec search issue --limit 10 --offset 10
   spec search "get*"                     Glob on ids, paths, descriptions
 Specs that fail to load are listed under unavailable. Alias: spec grep.`,
@@ -86,7 +88,7 @@ Missing required arguments are reported before calling the server.
 Policies match prompt:<name> as the tool. Alias: spec prompt.
 ${SOURCE}`,
   add: `spec add <name> --openapi <url-or-file> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio "<cmd>"
-  --description <text>  --base-url <url>  --auth <token>  --header k=v
+  --description <text>  --label <l> (repeatable)  --base-url <url>  --auth <token>  --header k=v
   --env KEY=VAL  --cwd <dir>               stdio only
   --allow-tool <glob>  --disable-tool <glob>
   --oauth-flow browser|device|client_credentials  --oauth-client-id <id>
@@ -94,8 +96,13 @@ ${SOURCE}`,
 Secrets: use \${VAR}, env:NAME or file:/path instead of raw values.
   spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json
   spec add gh --mcp-http https://api.example.com/mcp --auth env:GH_TOKEN`,
-  specs: `spec specs [--filter s] [--compact false]
-List registered specs. Manage: spec remove | enable | disable | refresh <name>.`,
+  specs: `spec specs [--filter s] [--label l] [--all-labels] [--compact false]
+List registered specs. --label is repeatable: any match, or every one with --all-labels.
+Manage: spec remove | enable | disable | refresh <name>, spec label add|remove <name> <label...>.`,
+  label: `spec label add|remove <spec> <label...>
+Labels: 1-64 chars of a-z 0-9 : = . _ - (lowercase), at most 32 per spec. Set at registration with spec add --label.
+  spec label add petstore team:billing env=prod
+  spec label remove petstore env=prod`,
   refresh: `spec refresh <name>
 Re-fetch a spec and rewrite its cache. Caches: tools 30m, call results 1m (SPEC_NO_CACHE=1 bypasses).`,
   auth: `spec auth <name> [--revoke]
@@ -117,7 +124,7 @@ Deny rules checked on spec call.
   --local writes .spec-cli/policy.json; --policies-path <dir> for per-spec files.`,
   usage: `spec usage [name]
 Recorded call counts; with a name, that spec's operations ranked. SPEC_NO_USAGE=1 disables.`,
-  mcp: `spec mcp [--transport stdio|http] [--mode meta|tools] [--specs a,b] [--tools a.t1,b.t2]
+  mcp: `spec mcp [--transport stdio|http] [--mode meta|tools] [--specs a,b] [--tools a.t1,b.t2] [--labels a,b]
 Serve registered specs over MCP. Meta mode tools: list_specs, list_tools, search_tools, get_tool, call_tool.
   --host <host> --port <port> --auth env:TOKEN   HTTP (/mcp, add ?mode=tools&specs=a)
   --config <file>                                Gateway settings (see README)`,

@@ -1,3 +1,5 @@
+import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
+
 function wildcardMatch(pattern: string, text: string): boolean {
   const glob = pattern.toLowerCase();
   const value = text.toLowerCase();
@@ -30,9 +32,33 @@ export function matchGlob(pattern: string, str: string): boolean {
   return wildcardMatch(pattern, str);
 }
 
+function isResourceTemplate(pattern: string): boolean {
+  return /^resource:/i.test(pattern) && UriTemplate.isTemplate(pattern);
+}
+
+export function matchTemplate(pattern: string, str: string): boolean {
+  if (!isResourceTemplate(pattern)) return false;
+  if (pattern.replace(/\{[^}]*\}/g, "").includes("*"))
+    return wildcardMatch(pattern.replace(/\{[^}]*\}/g, "*"), str);
+  try {
+    return new UriTemplate(pattern.toLowerCase()).match(str.toLowerCase()) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function matchFilter(pattern: string, str: string): boolean {
-  if (!isGlob(pattern)) return str.toLowerCase() === pattern.toLowerCase();
-  return wildcardMatch(pattern, str);
+  if (str.toLowerCase() === pattern.toLowerCase()) return true;
+  if (isResourceTemplate(pattern)) return matchTemplate(pattern, str);
+  return isGlob(pattern) && wildcardMatch(pattern, str);
+}
+
+export function filterAllows(ids: string[], allowed?: string[], disabled?: string[]): boolean {
+  const matches = (patterns: string[], id: string) =>
+    patterns.some((pattern) => matchFilter(pattern, id));
+  return ids.every(
+    (id) => (!allowed?.length || matches(allowed, id)) && !matches(disabled ?? [], id)
+  );
 }
 
 export function applyToolFilter<T>(
@@ -41,9 +67,5 @@ export function applyToolFilter<T>(
   allowed?: string[],
   disabled?: string[]
 ): T[] {
-  return items.filter((item) => {
-    const id = name(item);
-    if (allowed?.length && !allowed.some((pattern) => matchFilter(pattern, id))) return false;
-    return !disabled?.some((pattern) => matchFilter(pattern, id));
-  });
+  return items.filter((item) => filterAllows([name(item)], allowed, disabled));
 }

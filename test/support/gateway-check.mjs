@@ -155,6 +155,10 @@ test("should validate URL modes and reject malformed filters", () => {
   for (const query of ["mode=bad", "tools=", "specs=a,,b", "mode=meta&mode=tools", "auth=x"])
     assert.throws(() => parseSelection(new URLSearchParams(query)));
   assert.throws(() => gatewayConfig({ port: "NaN" }));
+  assert.deepEqual(gatewayConfig({ labels: "orc, team:docs" }).labels, ["orc", "team:docs"]);
+  assert.deepEqual(gatewayConfig({ labels: ["orc", "a,b"] }).labels, ["orc", "a", "b"]);
+  for (const labels of ["Bad Label", "orc,,x", true])
+    assert.throws(() => gatewayConfig({ labels }));
 });
 test("should advertise only five meta-tools and paginate compact discovery", async () => {
   const c = await client();

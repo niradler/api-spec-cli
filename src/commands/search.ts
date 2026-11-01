@@ -1,4 +1,4 @@
-import { flagString, parseArgs, parseLimit, parseOffset } from "../args.ts";
+import { flagBool, flagList, flagString, parseArgs, parseLimit, parseOffset } from "../args.ts";
 import { createSpecClient } from "../client.ts";
 import { out } from "../output.ts";
 
@@ -7,7 +7,7 @@ export async function searchCmd(args: string[]): Promise<void> {
   const query = positional.join(" ");
   if (!query)
     throw new Error(
-      "Usage: spec search <query> [--spec <name>] [--limit N] [--offset N]\n" +
+      "Usage: spec search <query> [--spec <name>] [--label <l>] [--all-labels] [--limit N] [--offset N]\n" +
         "  Text: ranked full-text search over names, paths, summaries, descriptions and tags\n" +
         "  Glob: * matches anything, ? matches one char"
     );
@@ -17,6 +17,8 @@ export async function searchCmd(args: string[]): Promise<void> {
         ?.split(",")
         .map((name) => name.trim())
         .filter(Boolean),
+      labels: flagList(flags, "label"),
+      labelMatch: flagBool(flags, "all-labels") ? "all" : "any",
       offset: parseOffset(flags),
       limit: parseLimit(flags),
     })

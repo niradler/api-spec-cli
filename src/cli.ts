@@ -10,6 +10,7 @@ import { resourcesCmd } from "./commands/resources.ts";
 import { promptsCmd } from "./commands/prompts.ts";
 import { addCmd } from "./commands/add.ts";
 import { specsCmd, registryMutate } from "./commands/specs.ts";
+import { labelCmd } from "./commands/label.ts";
 import { searchCmd } from "./commands/search.ts";
 import { authCmd } from "./commands/auth.ts";
 import { usageCmd } from "./commands/usage.ts";
@@ -22,6 +23,8 @@ import { sweepCache } from "./cache.ts";
 import { migrateLegacyHome } from "./paths.ts";
 import { commandHelp } from "./help.ts";
 import { VERSION } from "./version.ts";
+
+const repeatable = { type: "string", array: true, nargs: 1 } as const;
 
 const specSourceOptions = {
   spec: { type: "string", describe: "Use a registered spec" },
@@ -36,10 +39,10 @@ const overrideOptions = {
   auth: { type: "string", describe: "Override auth token" },
   "auth-from": { type: "string", describe: "Use stored OAuth token from another spec" },
   "base-url": { type: "string", describe: "Override base URL" },
-  header: { type: "string", array: true, describe: "Header k=v (repeatable)" },
-  "allow-tool": { type: "string", array: true, describe: "Allow tool glob (repeatable)" },
-  "disable-tool": { type: "string", array: true, describe: "Disable tool glob (repeatable)" },
-  env: { type: "string", array: true, describe: "Env KEY=VAL (repeatable, stdio only)" },
+  header: { ...repeatable, describe: "Header k=v (repeatable)" },
+  "allow-tool": { ...repeatable, describe: "Allow tool glob (repeatable)" },
+  "disable-tool": { ...repeatable, describe: "Disable tool glob (repeatable)" },
+  env: { ...repeatable, describe: "Env KEY=VAL (repeatable, stdio only)" },
   cwd: { type: "string", describe: "Working directory (stdio only)" },
 } satisfies Record<string, Options>;
 
@@ -59,6 +62,7 @@ const commands = (rest: string[]): CommandModule[] => [
         auth: { type: "string" },
         specs: { type: "string" },
         tools: { type: "string" },
+        labels: { type: "string" },
       }),
     handler: () => mcpCmd(rest),
   },
@@ -96,8 +100,8 @@ const commands = (rest: string[]): CommandModule[] => [
           ...sourceOptions,
           data: { type: "string", describe: "JSON body / MCP args, or - for stdin" },
           "data-file": { type: "string", describe: "Read JSON body from a file" },
-          var: { type: "string", array: true, describe: "Path/GraphQL var k=v (repeatable)" },
-          query: { type: "string", array: true, describe: "Query param k=v (repeatable)" },
+          var: { ...repeatable, describe: "Path/GraphQL var k=v (repeatable)" },
+          query: { ...repeatable, describe: "Query param k=v (repeatable)" },
           method: { type: "string", describe: "Override HTTP method" },
           "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
@@ -123,7 +127,7 @@ const commands = (rest: string[]): CommandModule[] => [
           filter: { type: "string", describe: "Substring search across fields" },
           limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
           offset: { type: "string", describe: "Skip the first N results" },
-          var: { type: "string", array: true, describe: "Template variable k=v (repeatable)" },
+          var: { ...repeatable, describe: "Template variable k=v (repeatable)" },
           "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
     handler: () => resourcesCmd(rest),
@@ -137,7 +141,7 @@ const commands = (rest: string[]): CommandModule[] => [
         filter: { type: "string", describe: "Substring search across fields" },
         limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
         offset: { type: "string", describe: "Skip the first N results" },
-        var: { type: "string", array: true, describe: "Prompt argument k=v (repeatable)" },
+        var: { ...repeatable, describe: "Prompt argument k=v (repeatable)" },
         data: { type: "string", describe: "Prompt arguments as JSON, or - for stdin" },
         "data-file": { type: "string", describe: "Read prompt arguments from a file" },
         "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
@@ -151,6 +155,8 @@ const commands = (rest: string[]): CommandModule[] => [
       y
         .positional("query", { type: "string", describe: "Search text or glob pattern" })
         .option("spec", { type: "string", describe: "Spec name or comma-separated set" })
+        .option("label", { type: "string", describe: "Only specs with label (repeatable)" })
+        .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" })
         .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
         .option("offset", { type: "string", describe: "Skip the first N matches" }),
     handler: () => searchCmd(rest),
@@ -170,6 +176,7 @@ const commands = (rest: string[]): CommandModule[] => [
         ...specSourceOptions,
         ...overrideOptions,
         description: { type: "string", describe: "Human-readable description" },
+        label: { type: "string", describe: "Label (repeatable)" },
         "oauth-flow": {
           type: "string",
           choices: ["browser", "device", "client_credentials"],
@@ -190,8 +197,20 @@ const commands = (rest: string[]): CommandModule[] => [
     builder: (y: Argv) =>
       y
         .option("compact", { type: "string", describe: "Set false to show full entry config" })
-        .option("filter", { type: "string", describe: "Substring search on name or description" }),
+        .option("filter", { type: "string", describe: "Substring search on name or description" })
+        .option("label", { type: "string", describe: "Only specs with label (repeatable)" })
+        .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" }),
     handler: () => specsCmd(rest),
+  },
+  {
+    command: "label <action> <spec> <labels..>",
+    describe: "Add or remove labels on a registered spec",
+    builder: (y: Argv) =>
+      y
+        .positional("action", { type: "string", choices: ["add", "remove"] })
+        .positional("spec", { type: "string", describe: "Registry name" })
+        .positional("labels", { type: "string", describe: "Labels to add or remove" }),
+    handler: () => labelCmd(rest),
   },
   {
     command: "remove <name>",
@@ -251,7 +270,7 @@ const commands = (rest: string[]): CommandModule[] => [
         .option("tool", { type: "string", describe: "Tool or operation glob" })
         .option("spec", { type: "string", describe: "Limit rule to this spec name (glob)" })
         .option("message", { type: "string", describe: "Error message when blocked" })
-        .option("when", { type: "string", array: true, describe: "Arg matcher key.op=value" })
+        .option("when", { ...repeatable, describe: "Arg matcher key.op=value" })
         .option("local", { type: "boolean", describe: "Use project .spec-cli/policy.json" })
         .option("policies-path", {
           type: "string",

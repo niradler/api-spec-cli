@@ -12,13 +12,14 @@ import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
-import { flagString, type Flags } from "./args.ts";
+import { flagList, flagString, type Flags } from "./args.ts";
 import {
   createGatewayServer,
   parseSelection,
   type GatewayDependencies,
   type GatewayMode,
 } from "./gateway.ts";
+import { LABEL_PATTERN } from "./labels.ts";
 import { createMcpSession } from "./mcp-client.ts";
 import { specHome } from "./paths.ts";
 import { expandSecrets } from "./secrets.ts";
@@ -30,6 +31,7 @@ export interface GatewayConfig {
   port: number;
   specs?: string[];
   tools?: string[];
+  labels?: string[];
   disabledTools?: string[];
   allowedHosts?: string[];
   allowedOrigins?: string[];
@@ -63,6 +65,7 @@ const configSchema = {
     port: { type: "integer", minimum: 0, maximum: 65535 },
     specs: strings,
     tools: strings,
+    labels: { ...strings, items: { type: "string", pattern: LABEL_PATTERN.source } },
     disabledTools: strings,
     allowedHosts: strings,
     allowedOrigins: strings,
@@ -86,11 +89,10 @@ export function gatewayConfig(flags: Flags): GatewayConfig {
   for (const key of ["transport", "mode", "host", "auth"])
     if (flags[key] !== undefined) config[key] = flags[key];
   if (flags.port !== undefined) config.port = Number(flags.port);
-  for (const key of ["specs", "tools"])
-    if (flags[key] !== undefined)
-      config[key] = String(flags[key])
-        .split(",")
-        .map((value) => value.trim());
+  for (const key of ["specs", "tools", "labels"]) {
+    const values = flagList(flags, key);
+    if (values) config[key] = values.flatMap((value) => value.split(",")).map((v) => v.trim());
+  }
   const validation = new AjvJsonSchemaValidator().getValidator(configSchema)(config);
   if (!validation.valid)
     throw new Error(`Invalid gateway configuration: ${validation.errorMessage}`);
