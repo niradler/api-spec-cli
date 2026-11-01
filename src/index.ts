@@ -16,7 +16,16 @@ export type {
   PromptGetOptions,
 } from "./client.ts";
 
-export { createToolCatalog, validateArguments, textResult, errorResult } from "./catalog.ts";
+export {
+  createToolCatalog,
+  validateArguments,
+  textResult,
+  errorResult,
+  formatResourceUri,
+  parseResourceUri,
+  formatPromptName,
+  parsePromptName,
+} from "./catalog.ts";
 export type {
   ToolCatalog,
   ToolCatalogOptions,
@@ -25,6 +34,9 @@ export type {
   CatalogSearchOptions,
   CatalogTool,
   ToolDescription,
+  CatalogResource,
+  CatalogResourceTemplate,
+  CatalogPrompt,
 } from "./catalog.ts";
 
 export {

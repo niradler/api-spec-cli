@@ -1,7 +1,13 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolResult,
+  GetPromptResult,
+  ReadResourceResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import {
   executeOperation,
+  getPrompt as getMcpPrompt,
+  readResource as readMcpResource,
   type CallRequest,
   type GraphqlCallResult,
   type McpCallResult,
@@ -18,12 +24,15 @@ import {
   operations,
   type SpecOperation,
 } from "./operations.ts";
+import { promptPolicyTarget, resourcePolicyTarget, resourcePolicyTargets } from "./mcp-features.ts";
 import { enforcePolicy } from "./policy.ts";
 import { createSearchIndex, type SearchIndex } from "./search.ts";
 import { loadSpec } from "./resolve.ts";
 import type {
   JsonObject,
   JsonSchema,
+  McpPromptArgument,
+  McpSpec,
   NamedEntry,
   OpenApiOperation,
   SpecDocument,
@@ -56,16 +65,63 @@ export interface ToolDescription {
   inputSchema: JsonSchema;
 }
 
+export interface CatalogResource {
+  uri: string;
+  spec: string;
+  name: string;
+  description: string | null;
+  mimeType: string | null;
+}
+
+export interface CatalogResourceTemplate {
+  uriTemplate: string;
+  spec: string;
+  name: string;
+  description: string | null;
+  mimeType: string | null;
+}
+
+export interface CatalogPrompt {
+  name: string;
+  spec: string;
+  description: string | null;
+  arguments: McpPromptArgument[];
+}
+
 export interface ToolCatalogOptions {
   entries: () => NamedEntry[];
   load?: (entry: NamedEntry) => Promise<SpecDocument>;
   execute?: typeof executeOperation;
+  readResource?: typeof readMcpResource;
+  getPrompt?: typeof getMcpPrompt;
   scopes?: ToolScope[];
   session?: McpSession;
 }
 
 export interface CatalogSearchOptions {
   unavailable?: (spec: string, error: unknown) => void;
+}
+
+const RESOURCE_PREFIX = "spec://";
+const NAMESPACED_RESOURCE = /^spec:\/\/([a-zA-Z0-9_-]+)\/(.+)$/s;
+const NAMESPACED_PROMPT = /^([a-zA-Z0-9_-]+)\.(.+)$/s;
+
+export function formatResourceUri(spec: string, uri: string): string {
+  return `${RESOURCE_PREFIX}${spec}/${uri}`;
+}
+
+export function parseResourceUri(uri: string): { spec: string; uri: string } | null {
+  const match = NAMESPACED_RESOURCE.exec(uri);
+  return match ? { spec: match[1]!, uri: match[2]! } : null;
+}
+
+export function formatPromptName(spec: string, name: string): string {
+  return `${spec}.${name}`;
+}
+
+export function parsePromptName(name: string): { spec: string; name: string } | null {
+  const match = NAMESPACED_PROMPT.exec(name);
+  return match ? { spec: match[1]!, name: match[2]! } : null;
 }
 
 export interface ToolCatalog {
@@ -79,6 +135,14 @@ export interface ToolCatalog {
     options?: CatalogSearchOptions
   ): Promise<CatalogTool[]>;
   call(id: string, args?: JsonObject): Promise<CallToolResult>;
+  resources(spec?: SpecSelection, options?: CatalogSearchOptions): Promise<CatalogResource[]>;
+  resourceTemplates(
+    spec?: SpecSelection,
+    options?: CatalogSearchOptions
+  ): Promise<CatalogResourceTemplate[]>;
+  readResource(uri: string): Promise<ReadResourceResult>;
+  prompts(spec?: SpecSelection, options?: CatalogSearchOptions): Promise<CatalogPrompt[]>;
+  getPrompt(name: string, args?: Record<string, string>): Promise<GetPromptResult>;
   close(): Promise<void>;
 }
 
@@ -114,6 +178,29 @@ function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
 function scopeAllowsTool(scope: ToolScope, id: string): boolean {
   if (scope.tools && !scope.tools.includes(id)) return false;
   return !scope.disabledTools?.includes(id);
+}
+
+function scopeAllowsFeature(scope: ToolScope, spec: string, targets: string[]): boolean {
+  const ids = targets.map((target) => `${spec}.${target}`);
+  if (scope.tools && !scope.tools.includes(ids[0]!)) return false;
+  return !ids.some((id) => scope.disabledTools?.includes(id));
+}
+
+function relayMessages(spec: string, messages: GetPromptResult["messages"]) {
+  return messages.map((message) => {
+    const { content } = message;
+    if (content.type === "resource")
+      return {
+        ...message,
+        content: {
+          ...content,
+          resource: { ...content.resource, uri: formatResourceUri(spec, content.resource.uri) },
+        },
+      };
+    if (content.type === "resource_link")
+      return { ...message, content: { ...content, uri: formatResourceUri(spec, content.uri) } };
+    return message;
+  });
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -181,6 +268,8 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
   const executeRequest = options.execute ?? executeOperation;
   const load = (entry: NamedEntry) => session.run(() => loadDocument(entry));
   const execute: typeof executeOperation = (...args) => session.run(() => executeRequest(...args));
+  const readResourceRequest = options.readResource ?? readMcpResource;
+  const getPromptRequest = options.getPrompt ?? getMcpPrompt;
 
   function specs(): NamedEntry[] {
     return options
@@ -300,5 +389,139 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return toolResult(tool.document, await execute(tool.document, tool.entry, target, request));
   }
 
-  return { specs, tools, find, describe, search, call, close: session.close };
+  async function mcpDocuments(
+    spec?: SpecSelection,
+    unavailable?: CatalogSearchOptions["unavailable"]
+  ): Promise<{ entry: NamedEntry; document: McpSpec }[]> {
+    const found: { entry: NamedEntry; document: McpSpec }[] = [];
+    for (const entry of selected(spec)) {
+      if (entry._section !== "mcp") continue;
+      try {
+        const document = await load(entry);
+        if (document.type === "mcp") found.push({ entry, document });
+      } catch (error) {
+        if (!unavailable) throw error;
+        unavailable(entry.name, error);
+      }
+    }
+    return found;
+  }
+
+  function featureVisible(entry: NamedEntry, target: string): boolean {
+    return (
+      entryAllows(entryFilter(entry), target) &&
+      scopes.every((scope) => scopeAllowsFeature(scope, entry.name, [target]))
+    );
+  }
+
+  function mcpEntry(spec: string): NamedEntry | undefined {
+    return specs().find((entry) => entry.name === spec && entry._section === "mcp");
+  }
+
+  async function resources(
+    spec?: SpecSelection,
+    options: CatalogSearchOptions = {}
+  ): Promise<CatalogResource[]> {
+    const found: CatalogResource[] = [];
+    for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
+      for (const resource of document.resources ?? []) {
+        if (!featureVisible(entry, resourcePolicyTarget(resource.uri))) continue;
+        found.push({
+          ...resource,
+          uri: formatResourceUri(entry.name, resource.uri),
+          spec: entry.name,
+        });
+      }
+    }
+    return found;
+  }
+
+  async function resourceTemplates(
+    spec?: SpecSelection,
+    options: CatalogSearchOptions = {}
+  ): Promise<CatalogResourceTemplate[]> {
+    const found: CatalogResourceTemplate[] = [];
+    for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
+      for (const template of document.resourceTemplates ?? []) {
+        if (!featureVisible(entry, resourcePolicyTarget(template.uriTemplate))) continue;
+        found.push({
+          ...template,
+          uriTemplate: formatResourceUri(entry.name, template.uriTemplate),
+          spec: entry.name,
+        });
+      }
+    }
+    return found;
+  }
+
+  async function readResource(uri: string): Promise<ReadResourceResult> {
+    const parsed = parseResourceUri(uri);
+    const entry = parsed && mcpEntry(parsed.spec);
+    if (!parsed || !entry) throw new Error("Unavailable resource");
+    const targets = resourcePolicyTargets(parsed.uri);
+    if (!scopes.every((scope) => scopeAllowsFeature(scope, entry.name, targets)))
+      throw new Error("Unavailable resource");
+    const document = await load(entry);
+    const result = await session.run(() => readResourceRequest(document, entry, parsed.uri));
+    return {
+      contents: result.contents.map((content) => ({
+        ...content,
+        uri: formatResourceUri(entry.name, content.uri),
+      })),
+    };
+  }
+
+  async function prompts(
+    spec?: SpecSelection,
+    options: CatalogSearchOptions = {}
+  ): Promise<CatalogPrompt[]> {
+    const found: CatalogPrompt[] = [];
+    for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
+      for (const prompt of document.prompts ?? []) {
+        if (!featureVisible(entry, promptPolicyTarget(prompt.name))) continue;
+        found.push({
+          ...prompt,
+          name: formatPromptName(entry.name, prompt.name),
+          spec: entry.name,
+        });
+      }
+    }
+    return found;
+  }
+
+  async function getPrompt(
+    name: string,
+    args: Record<string, string> = {}
+  ): Promise<GetPromptResult> {
+    const parsed = parsePromptName(name);
+    const entry = parsed && mcpEntry(parsed.spec);
+    if (!parsed || !entry) throw new Error("Unavailable prompt");
+    const document = await load(entry);
+    const prompt =
+      document.type === "mcp" ? document.prompts?.find((item) => item.name === parsed.name) : null;
+    if (!prompt || !featureVisible(entry, promptPolicyTarget(prompt.name)))
+      throw new Error("Unavailable prompt");
+    const result = await session.run(() =>
+      getPromptRequest(document, entry, prompt.name, { data: args })
+    );
+    return {
+      ...(result.description ? { description: result.description } : {}),
+      messages: relayMessages(entry.name, result.messages),
+    };
+  }
+
+  return {
+    specs,
+    tools,
+    find,
+    describe,
+    search,
+    call,
+    resources,
+    resourceTemplates,
+    readResource,
+    prompts,
+    getPrompt,
+    close: session.close,
+  };
 }

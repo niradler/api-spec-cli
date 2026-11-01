@@ -30,7 +30,7 @@ export function matchesLabels(
   match: LabelMatch = "any"
 ): boolean {
   if (!wanted?.length) return true;
-  const have = entry.labels ?? [];
+  const have = Array.isArray(entry.labels) ? entry.labels : [];
   return match === "all"
     ? wanted.every((label) => have.includes(label))
     : wanted.some((label) => have.includes(label));

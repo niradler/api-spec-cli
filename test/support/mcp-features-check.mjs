@@ -3,9 +3,15 @@ import { after, describe, test } from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
+  allEntries,
+  createGatewayServer,
   createSpecClient,
+  entryFromSource,
   memoryRegistryStore,
+  parseSelection,
   setLocalPolicyFile,
   setPoliciesDir,
   setPolicyDir,
@@ -274,5 +280,204 @@ describe("unsupported specs", () => {
   test("reports servers without the capability", async () => {
     await assert.rejects(client.resources.list("echo"), /does not expose resources/);
     await assert.rejects(client.prompts.list("echo"), /does not expose prompts/);
+  });
+});
+
+describe("Gateway relay", () => {
+  const registry = {
+    mcp: {
+      docs: entryFromSource({
+        type: "stdio",
+        command: "node",
+        args: [featuresServer],
+        labels: ["team:docs"],
+      }),
+      hidden: entryFromSource({
+        type: "stdio",
+        command: "node",
+        args: [featuresServer],
+        disabledTools: ["resource:docs://pages/*", "prompt:summarize"],
+      }),
+      broken: entryFromSource({ type: "stdio", command: "node", args: [partialServer, "broken"] }),
+      echo: entryFromSource({ type: "stdio", command: "node", args: [echoServer] }),
+    },
+    openapi: { pets: entryFromSource({ type: "openapi", source: openapiFixture }) },
+    graphql: {},
+  };
+
+  async function gateway(query = "", config = {}) {
+    const server = createGatewayServer(parseSelection(new URLSearchParams(query)), config, {
+      entries: () => allEntries(registry),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const mcp = new Client({ name: "relay-test", version: "1" });
+    await mcp.connect(clientTransport);
+    return { mcp, close: () => Promise.all([mcp.close(), server.close()]) };
+  }
+
+  async function withGateway(query, run, config) {
+    const { mcp, close } = await gateway(query, config);
+    try {
+      await run(mcp);
+    } finally {
+      await close();
+    }
+  }
+
+  test("namespaces resources, templates and prompts across specs", async () => {
+    await withGateway("", async (mcp) => {
+      assert.deepEqual(mcp.getServerCapabilities(), {
+        tools: {},
+        resources: {},
+        prompts: {},
+      });
+      assert.deepEqual((await mcp.listResources()).resources, [
+        {
+          uri: "spec://docs/docs://readme",
+          name: "readme",
+          description: "Project readme",
+          mimeType: "text/markdown",
+        },
+        {
+          uri: "spec://hidden/docs://readme",
+          name: "readme",
+          description: "Project readme",
+          mimeType: "text/markdown",
+        },
+      ]);
+      assert.deepEqual(
+        (await mcp.listResourceTemplates()).resourceTemplates.map((t) => t.uriTemplate),
+        ["spec://docs/docs://pages/{slug}"]
+      );
+      assert.deepEqual(
+        (await mcp.listPrompts()).prompts.map((p) => [p.name, p.arguments.map((a) => a.name)]),
+        [["docs.summarize", ["topic", "tone"]]]
+      );
+    });
+  });
+
+  test("reads resources and expanded templates with namespaced content URIs", async () => {
+    await withGateway("", async (mcp) => {
+      assert.deepEqual((await mcp.readResource({ uri: "spec://docs/docs://readme" })).contents, [
+        { uri: "spec://docs/docs://readme", mimeType: "text/markdown", text: "# Docs" },
+      ]);
+      const page = await mcp.readResource({ uri: "spec://docs/docs://pages/intro" });
+      assert.deepEqual(page.contents, [
+        { uri: "spec://docs/docs://pages/intro", text: "page:intro" },
+      ]);
+    });
+  });
+
+  test("gets prompts with arguments", async () => {
+    await withGateway("", async (mcp) => {
+      const result = await mcp.getPrompt({
+        name: "docs.summarize",
+        arguments: { topic: "labels" },
+      });
+      assert.equal(result.description, "Summary prompt");
+      assert.equal(result.messages[0].content.text, "Summarize labels");
+    });
+  });
+
+  test("rejects unknown, malformed, filtered and cross-spec targets", async () => {
+    await withGateway("", async (mcp) => {
+      for (const uri of [
+        "docs://readme",
+        "spec://missing/docs://readme",
+        "spec://pets/docs://readme",
+        "spec://hidden/docs://pages/intro",
+        "spec://hidden/docs://pages/x/../intro",
+        "spec://hidden/docs://pages/%69ntro",
+      ])
+        await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+      for (const name of ["summarize", "hidden.summarize", "docs.SUMMARIZE", "missing.summarize"])
+        await assert.rejects(
+          mcp.getPrompt({ name, arguments: { topic: "x" } }),
+          /Prompt unavailable/,
+          name
+        );
+      await assert.rejects(mcp.getPrompt({ name: "docs.summarize" }), /Prompt unavailable/);
+    });
+  });
+
+  test("enforces policy on relayed reads and prompts", async () => {
+    withPolicy([
+      { id: "no-secret", tool: "resource:docs://pages/secret*", message: "secret" },
+      { id: "no-summary", tool: "prompt:summarize", message: "prompt blocked" },
+    ]);
+    try {
+      await withGateway("", async (mcp) => {
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://docs/docs://pages/%73ecret" }),
+          /Resource unavailable/
+        );
+        await assert.rejects(
+          mcp.getPrompt({ name: "docs.summarize", arguments: { topic: "x" } }),
+          /Prompt unavailable/
+        );
+        assert.equal(
+          (await mcp.readResource({ uri: "spec://docs/docs://pages/public" })).contents[0].text,
+          "page:public"
+        );
+      });
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("fails listings instead of publishing a partial catalog", async () => {
+    registry.mcp.down = entryFromSource({
+      type: "stdio",
+      command: "node",
+      args: [join(home, "missing-server.mjs")],
+    });
+    try {
+      await withGateway("", async (mcp) => {
+        await assert.rejects(mcp.listResources(), /Unable to list available resources/);
+        await assert.rejects(mcp.listPrompts(), /Unable to list available prompts/);
+      });
+      await withGateway("specs=docs", async (mcp) => {
+        assert.equal((await mcp.listPrompts()).prompts.length, 1);
+      });
+    } finally {
+      delete registry.mcp.down;
+    }
+  });
+
+  test("applies URL and config scopes to resources and prompts", async () => {
+    await withGateway("labels=team:docs", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResources()).resources.map((r) => r.uri),
+        ["spec://docs/docs://readme"]
+      );
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://hidden/docs://readme" }),
+        /Resource unavailable/
+      );
+    });
+    await withGateway("tools=docs.resource:docs://readme", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResources()).resources.map((r) => r.uri),
+        ["spec://docs/docs://readme"]
+      );
+      assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
+      assert.deepEqual((await mcp.listPrompts()).prompts, []);
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://docs/docs://pages/intro" }),
+        /Resource unavailable/
+      );
+    });
+    await withGateway(
+      "",
+      async (mcp) => {
+        assert.deepEqual((await mcp.listPrompts()).prompts, []);
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://docs/docs://%72eadme" }),
+          /Resource unavailable/
+        );
+      },
+      { disabledTools: ["docs.prompt:summarize", "docs.resource:docs://readme"] }
+    );
   });
 });
