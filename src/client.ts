@@ -14,7 +14,7 @@ import {
   type McpPromptResult,
   type McpResourceResult,
 } from "./execute.ts";
-import { matchesLabels, normalizeLabels, type LabelMatch } from "./labels.ts";
+import { isValidLabel, matchesLabels, normalizeLabels, type LabelMatch } from "./labels.ts";
 import { createMcpSession } from "./mcp-client.ts";
 import {
   listPrompts,
@@ -168,7 +168,7 @@ function summary(entry: NamedEntry): SpecSummary {
     type: entry.type,
     description: entry.description || null,
     enabled: entry.enabled,
-    ...(entry.labels?.length ? { labels: entry.labels } : {}),
+    ...(Array.isArray(entry.labels) && entry.labels.length ? { labels: entry.labels } : {}),
   };
 }
 
@@ -221,7 +221,8 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     const entry = findEntry(registry, name);
     if (!entry) throw new Error(`No spec named '${name}'. Run 'spec specs' to see available.`);
     const stored = (registry[entry._section] as Record<string, RegistryEntry>)[name]!;
-    const labels = normalizeLabels(change(normalizeLabels(stored.labels)));
+    const current = Array.isArray(stored.labels) ? stored.labels.filter(isValidLabel) : [];
+    const labels = normalizeLabels(change(current));
     if (labels.length) stored.labels = labels;
     else delete stored.labels;
     store.write(registry);
@@ -230,7 +231,7 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
 
   function listSpecs({ filter, compact = true, labels, match }: SpecListOptions = {}) {
     const needle = filter?.toLowerCase();
-    const wanted = normalizeLabels(labels);
+    const wanted = labels === undefined ? undefined : normalizeLabels(labels);
     return allEntries(store.read())
       .filter(
         (entry) =>
@@ -304,20 +305,20 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     { spec, labels, match, offset = 0, limit = 0 }: SearchOptions = {}
   ): Promise<SearchResult> {
     let names = typeof spec === "string" ? [spec] : spec || [];
-    const wanted = normalizeLabels(labels);
+    const wanted = labels === undefined ? undefined : normalizeLabels(labels);
+    const registry = store.read();
     for (const name of names) {
-      const entry = getEntry(name, store.read());
+      const entry = getEntry(name, registry);
       if (!entry.enabled) throw new Error(`Spec '${entry.name}' is disabled. Enable it first.`);
     }
-    const enabled = allEntries(store.read()).filter((e) => e.enabled);
+    const enabled = allEntries(registry).filter((e) => e.enabled);
     if ((names.length || enabled.length) === 0)
       throw new Error("No registered specs. Run 'spec add' first.");
-    if (wanted.length) {
+    if (wanted) {
       const candidates = names.length ? names : enabled.map((e) => e.name);
-      names = candidates.filter((name) =>
-        matchesLabels(findEntry(store.read(), name)!, wanted, match)
-      );
-      if (names.length === 0) return { query, total: 0, showing: 0, results: [] };
+      names = candidates.filter((name) => matchesLabels(findEntry(registry, name)!, wanted, match));
+      if (names.length === 0)
+        return { query, total: 0, showing: 0, results: [], ...(offset > 0 ? { offset } : {}) };
     }
     const searched = names.length || enabled.length;
     const unavailable: { spec: string; error: unknown }[] = [];

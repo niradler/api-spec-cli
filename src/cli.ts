@@ -60,6 +60,7 @@ const commands = (rest: string[]): CommandModule[] => [
         auth: { type: "string" },
         specs: { type: "string" },
         tools: { type: "string" },
+        labels: { type: "string" },
       }),
     handler: () => mcpCmd(rest),
   },
@@ -152,11 +153,7 @@ const commands = (rest: string[]): CommandModule[] => [
       y
         .positional("query", { type: "string", describe: "Search text or glob pattern" })
         .option("spec", { type: "string", describe: "Spec name or comma-separated set" })
-        .option("label", {
-          type: "string",
-          array: true,
-          describe: "Only specs with label (repeatable)",
-        })
+        .option("label", { type: "string", describe: "Only specs with label (repeatable)" })
         .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" })
         .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
         .option("offset", { type: "string", describe: "Skip the first N matches" }),
@@ -177,7 +174,7 @@ const commands = (rest: string[]): CommandModule[] => [
         ...specSourceOptions,
         ...overrideOptions,
         description: { type: "string", describe: "Human-readable description" },
-        label: { type: "string", array: true, describe: "Label (repeatable)" },
+        label: { type: "string", describe: "Label (repeatable)" },
         "oauth-flow": {
           type: "string",
           choices: ["browser", "device", "client_credentials"],
@@ -199,11 +196,7 @@ const commands = (rest: string[]): CommandModule[] => [
       y
         .option("compact", { type: "string", describe: "Set false to show full entry config" })
         .option("filter", { type: "string", describe: "Substring search on name or description" })
-        .option("label", {
-          type: "string",
-          array: true,
-          describe: "Only specs with label (repeatable)",
-        })
+        .option("label", { type: "string", describe: "Only specs with label (repeatable)" })
         .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" }),
     handler: () => specsCmd(rest),
   },

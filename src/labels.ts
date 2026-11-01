@@ -29,9 +29,10 @@ export function matchesLabels(
   wanted: readonly string[] | undefined,
   match: LabelMatch = "any"
 ): boolean {
-  if (!wanted?.length) return true;
+  if (match !== "any" && match !== "all")
+    throw new Error(`Invalid label match '${String(match)}': use any or all`);
+  if (wanted === undefined) return true;
   const have = Array.isArray(entry.labels) ? entry.labels : [];
-  return match === "all"
-    ? wanted.every((label) => have.includes(label))
-    : wanted.some((label) => have.includes(label));
+  const carried = (label: string) => have.includes(label);
+  return wanted.length > 0 && (match === "all" ? wanted.every(carried) : wanted.some(carried));
 }

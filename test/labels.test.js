@@ -83,7 +83,10 @@ describe("label validation", () => {
   test("matchesLabels supports any, all and no filter", () => {
     const entry = { labels: ["a", "b"] };
     expect(matchesLabels(entry, undefined)).toBe(true);
-    expect(matchesLabels(entry, [])).toBe(true);
+    expect(matchesLabels(entry, [])).toBe(false);
+    expect(matchesLabels(entry, [], "all")).toBe(false);
+    expect(() => matchesLabels(entry, ["a"], "ALL")).toThrow("Invalid label match");
+    expect(matchesLabels({ labels: "abc" }, ["a"])).toBe(false);
     expect(matchesLabels(entry, ["a", "z"])).toBe(true);
     expect(matchesLabels(entry, ["a", "z"], "all")).toBe(false);
     expect(matchesLabels(entry, ["a", "b"], "all")).toBe(true);
@@ -107,6 +110,9 @@ describe("flag parsing", () => {
     expect(flags.label).toEqual(["a", "b"]);
     expect(flags["all-labels"]).toBe(true);
     expect(positional).toEqual(["query"]);
+    const explicit = parseArgs(["--all-labels", "false", "query"]);
+    expect(explicit.flags["all-labels"]).toBe("false");
+    expect(explicit.positional).toEqual(["query"]);
     expect(
       sourceFromFlags(parseArgs(["--openapi", "u", "--label", "z", "--label", "a"]).flags).labels
     ).toEqual(["z", "a"]);
@@ -134,7 +140,9 @@ describe("SDK specs", () => {
     expect(names({ labels: ["orc:project=a", "orc:project=b"] })).toEqual(["billing", "pets"]);
     expect(names({ labels: ["orc", "team:billing"], match: "all" })).toEqual(["billing"]);
     expect(names({ labels: ["nothing"] })).toEqual([]);
-    expect(names({ labels: [] })).toEqual(["billing", "pets", "plain"]);
+    expect(names({ labels: [] })).toEqual([]);
+    expect(names({})).toEqual(["billing", "pets", "plain"]);
+    expect(() => names({ labels: ["orc"], match: "every" })).toThrow("Invalid label match");
     expect(names({ labels: ["orc"], filter: "pet" })).toEqual(["pets"]);
     expect(client.specs.list({ labels: ["orc"], compact: false })[0].labels).toContain("orc");
     expect(() => client.specs.list({ labels: ["Bad"] })).toThrow("Invalid label 'Bad'");
@@ -169,6 +177,27 @@ describe("SDK specs", () => {
     });
     expect(client.specs.list({ labels: ["x"] })).toEqual([]);
     expect(client.specs.addLabels("old", ["x"])).toEqual(["x"]);
+  });
+
+  test("label changes repair malformed stored labels", () => {
+    const client = createSpecClient({
+      registry: memoryRegistryStore({
+        openapi: {
+          bad: { type: "openapi", enabled: true, source: fixture, config: {}, labels: "orc" },
+          mixed: {
+            type: "openapi",
+            enabled: true,
+            source: fixture,
+            config: {},
+            labels: ["orc", "Bad Label"],
+          },
+        },
+      }),
+    });
+    expect(client.specs.list({ labels: ["orc"] }).map((spec) => spec.name)).toEqual(["mixed"]);
+    expect("labels" in client.specs.list().find((spec) => spec.name === "bad")).toBe(false);
+    expect(client.specs.addLabels("bad", ["orc"])).toEqual(["orc"]);
+    expect(client.specs.removeLabels("mixed", ["missing"])).toEqual(["orc"]);
   });
 });
 

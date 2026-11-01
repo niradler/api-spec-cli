@@ -3,6 +3,7 @@ import type {
   GetPromptResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
+import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import {
   executeOperation,
@@ -24,7 +25,12 @@ import {
   operations,
   type SpecOperation,
 } from "./operations.ts";
-import { promptPolicyTarget, resourcePolicyTarget, resourcePolicyTargets } from "./mcp-features.ts";
+import {
+  promptPolicyTarget,
+  resolveResourceUri,
+  resourcePolicyTarget,
+  resourcePolicyTargets,
+} from "./mcp-features.ts";
 import { enforcePolicy } from "./policy.ts";
 import { createSearchIndex, type SearchIndex } from "./search.ts";
 import { loadSpec } from "./resolve.ts";
@@ -171,7 +177,6 @@ export function validateArguments(schema: JsonSchema, args: unknown): string | n
 function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
   if (scope.specs && !scope.specs.includes(entry.name)) return false;
   if (scope.tools && !scope.tools.some((tool) => tool.startsWith(`${entry.name}.`))) return false;
-  if (scope.labels && !scope.labels.length) return false;
   return matchesLabels(entry, scope.labels, scope.labelMatch);
 }
 
@@ -180,10 +185,27 @@ function scopeAllowsTool(scope: ToolScope, id: string): boolean {
   return !scope.disabledTools?.includes(id);
 }
 
-function scopeAllowsFeature(scope: ToolScope, spec: string, targets: string[]): boolean {
-  const ids = targets.map((target) => `${spec}.${target}`);
-  if (scope.tools && !scope.tools.includes(ids[0]!)) return false;
-  return !ids.some((id) => scope.disabledTools?.includes(id));
+function scopeAllowsFeature(
+  scope: ToolScope,
+  spec: string,
+  grants: string[],
+  denials = grants
+): boolean {
+  const ids = (targets: string[]) => targets.map((target) => `${spec}.${target}`);
+  if (scope.tools && !ids(grants).some((id) => scope.tools!.includes(id))) return false;
+  return !ids(denials).some((id) => scope.disabledTools?.includes(id));
+}
+
+function templateTargets(document: McpSpec, uri: string): string[] {
+  return (document.resourceTemplates ?? [])
+    .filter((template) => {
+      try {
+        return new UriTemplate(template.uriTemplate).match(uri) !== null;
+      } catch {
+        return false;
+      }
+    })
+    .map((template) => resourcePolicyTarget(template.uriTemplate));
 }
 
 function relayMessages(spec: string, messages: GetPromptResult["messages"]) {
@@ -458,10 +480,14 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const parsed = parseResourceUri(uri);
     const entry = parsed && mcpEntry(parsed.spec);
     if (!parsed || !entry) throw new Error("Unavailable resource");
-    const targets = resourcePolicyTargets(parsed.uri);
-    if (!scopes.every((scope) => scopeAllowsFeature(scope, entry.name, targets)))
-      throw new Error("Unavailable resource");
     const document = await load(entry);
+    if (document.type !== "mcp" || resolveResourceUri(document, parsed.uri) !== parsed.uri)
+      throw new Error("Unavailable resource");
+    const templates = templateTargets(document, parsed.uri);
+    const grants = [resourcePolicyTarget(parsed.uri), ...templates];
+    const denials = [...resourcePolicyTargets(parsed.uri), ...templates];
+    if (!scopes.every((scope) => scopeAllowsFeature(scope, entry.name, grants, denials)))
+      throw new Error("Unavailable resource");
     const result = await session.run(() => readResourceRequest(document, entry, parsed.uri));
     return {
       contents: result.contents.map((content) => ({

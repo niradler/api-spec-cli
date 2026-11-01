@@ -9,6 +9,7 @@ Run `spec mcp` to serve the registry to MCP clients. The gateway uses the offici
 ```bash
 spec mcp --specs github,petstore                    # stdio, meta mode
 spec mcp --mode tools --tools github.list_issues   # stdio, direct tools
+spec mcp --labels orc:project=alpha                 # stdio, specs carrying a label
 spec mcp --transport http --port 3000 --auth env:SPEC_GATEWAY_TOKEN --specs github,petstore
 spec mcp --config gateway.json
 ```
@@ -43,6 +44,7 @@ Example `gateway.json` (all fields optional):
   "auth": "env:SPEC_GATEWAY_TOKEN",
   "specs": ["github", "petstore"],
   "tools": ["github.list_issues", "petstore.getPet"],
+  "labels": ["orc"],
   "disabledTools": ["github.delete_issue"],
   "allowedOrigins": []
 }
@@ -54,7 +56,7 @@ HTTP binds to loopback by default. Non-loopback binding requires `auth` and an e
 
 Meta discovery returns at most 20 summaries by default; `offset` and `limit` (1–100) page results. `get_tool({"tool":"github.list_issues"})` returns its schema. `call_tool({"tool":"github.list_issues","arguments":{...}})` executes it. MCP arguments retain their original schema; OpenAPI uses an envelope with declared `path`, `query` and JSON `body`; GraphQL accepts declared field arguments and generates its query. Caller-supplied endpoints, auth overrides, shell commands and local file reads are not exposed. GraphQL subscriptions, external OpenAPI schema references, multipart uploads and per-call header/cookie parameters are not supported by this gateway. Existing automatic GraphQL scalar-field selection is retained. Direct MCP names include a readable prefix and stable hash suffix to handle invalid characters and naming collisions; descriptions include the qualified ID used in URL filters. Upstream tool content and structured results are preserved; OpenAPI response headers and local spill-file paths are not exposed. If a selected upstream catalog fails, discovery fails rather than silently publishing a partial catalog.
 
-Both modes relay upstream MCP resources and prompts through the standard `resources` and `prompts` capabilities. Resource URIs and templates are namespaced as `spec://<spec>/<original-uri>` (for example `spec://docs/docs://pages/{slug}`), and prompt names as `<spec>.<prompt>`; URIs inside read results and prompt messages are rewritten the same way. Reads and prompt calls go through the same spec filters and policies as the CLI (`resource:<uri>` and `prompt:<name>`, with encoded and `..` forms normalized). In `tools` URL filters and `disabledTools`, address them as `docs.resource:docs://readme` or `docs.prompt:summarize`; a `tools` allow-list that names only tools hides every resource and prompt. Listings are paged 100 at a time and, like tool discovery, fail rather than publish a partial list when a selected server is unavailable.
+Both modes relay upstream MCP resources and prompts through the standard `resources` and `prompts` capabilities. Resource URIs and templates are namespaced as `spec://<spec>/<original-uri>` (for example `spec://docs/docs://pages/{slug}`), and prompt names as `<spec>.<prompt>`; URIs inside read results and prompt messages are rewritten the same way. Reads and prompt calls go through the same spec filters and policies as the CLI (`resource:<uri>` and `prompt:<name>`, with encoded and `..` forms normalized). Reads accept only the exact concrete URIs the upstream server resolves to; resource names, templates and other aliases are rejected. In `tools` URL filters and `disabledTools`, address them as `docs.resource:docs://readme`, `docs.resource:docs://pages/{slug}` (covers every expansion) or `docs.prompt:summarize`; a `tools` allow-list that names only tools hides every resource and prompt. These IDs share the tool namespace, so an upstream tool literally named `resource:...` or `prompt:...` is matched by the same rules. Listings load every selected MCP server (clients often list on connect, also in meta mode), are paged 100 at a time and, like tool discovery, fail rather than publish a partial list when a selected server is unavailable; narrow with `specs` or `labels` to keep connects fast.
 
 OpenAPI query arrays use repeated keys by default (`tag=a&tag=b`), respecting form `explode: false`, space-delimited and pipe-delimited array settings. Object query serialization is unsupported.
 
@@ -339,7 +341,7 @@ spec specs --label orc --label team:billing --all-labels   # every label
 spec search "delete a pet" --label orc:project=alpha       # combine with --spec: both must pass
 ```
 
-SDK: `client.specs.list({ labels, match: "any" | "all" })`, `client.specs.addLabels(name, labels)`, `client.specs.removeLabels(name, labels)`, `client.operations.search(query, { labels, match })`, and `{ labels, labelMatch }` on a `ToolScope` so a catalog only loads and searches matching specs (an empty `labels` array in a scope matches nothing). The gateway accepts `?labels=a,b` (any match). `normalizeLabels` and `matchesLabels` are exported.
+SDK: `client.specs.list({ labels, match: "any" | "all" })`, `client.specs.addLabels(name, labels)`, `client.specs.removeLabels(name, labels)`, `client.operations.search(query, { labels, match })`, and `{ labels, labelMatch }` on a `ToolScope` so a catalog only loads and searches matching specs (an empty `labels` array in a scope matches nothing). The gateway accepts `?labels=a,b`, `--labels a,b` or `"labels"` in its config (any match). `normalizeLabels` and `matchesLabels` are exported.
 
 ## Usage Ranking
 

@@ -97,10 +97,11 @@ const CURSOR_PAGE_SIZE = 100;
 
 function cursorPage<T>(
   items: T[],
-  cursor = "0"
+  cursor?: string
 ): { items: T[]; nextCursor: { nextCursor?: string } } {
-  if (!/^\d+$/.test(cursor)) throw new Error("Invalid cursor");
-  const offset = Number(cursor);
+  const start = cursor || "0";
+  if (!/^\d+$/.test(start)) throw new Error("Invalid cursor");
+  const offset = Number(start);
   const end = offset + CURSOR_PAGE_SIZE;
   return {
     items: items.slice(offset, end),

@@ -42,7 +42,10 @@ export function parseArgs(args: string[]): ParsedArgs {
     } else {
       key = arg.slice(2);
       const next = args[i + 1];
-      value = BOOLEAN.has(key) || next === undefined || next.startsWith("--") ? true : args[++i]!;
+      const takesValue = BOOLEAN.has(key)
+        ? next === "true" || next === "false"
+        : next !== undefined && !next.startsWith("--");
+      value = takesValue ? args[++i]! : true;
     }
 
     if (REPEATABLE.has(key)) {

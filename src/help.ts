@@ -124,7 +124,7 @@ Deny rules checked on spec call.
   --local writes .spec-cli/policy.json; --policies-path <dir> for per-spec files.`,
   usage: `spec usage [name]
 Recorded call counts; with a name, that spec's operations ranked. SPEC_NO_USAGE=1 disables.`,
-  mcp: `spec mcp [--transport stdio|http] [--mode meta|tools] [--specs a,b] [--tools a.t1,b.t2]
+  mcp: `spec mcp [--transport stdio|http] [--mode meta|tools] [--specs a,b] [--tools a.t1,b.t2] [--labels a,b]
 Serve registered specs over MCP. Meta mode tools: list_specs, list_tools, search_tools, get_tool, call_tool.
   --host <host> --port <port> --auth env:TOKEN   HTTP (/mcp, add ?mode=tools&specs=a)
   --config <file>                                Gateway settings (see README)`,

@@ -16,6 +16,7 @@ import {
   setPoliciesDir,
   setPolicyDir,
 } from "../../src/index.ts";
+import { requirePrompt } from "../../src/mcp-features.ts";
 
 const featuresServer = resolve(import.meta.dirname, "mcp-features-server.mjs");
 const partialServer = resolve(import.meta.dirname, "mcp-partial-server.mjs");
@@ -479,5 +480,64 @@ describe("Gateway relay", () => {
       },
       { disabledTools: ["docs.prompt:summarize", "docs.resource:docs://readme"] }
     );
+  });
+
+  test("accepts only exact concrete URIs so aliases cannot bypass scopes", async () => {
+    const aliases = [
+      "spec://docs/readme",
+      "spec://docs/README",
+      "spec://docs/docs://readme{?x}",
+      "spec://docs/page",
+      "spec://docs/docs://pages/{slug}",
+      "spec://docs/docs://pages/secret{?x}",
+    ];
+    await withGateway("", async (mcp) => {
+      for (const uri of aliases)
+        await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+    });
+    await withGateway(
+      "",
+      async (mcp) => {
+        for (const uri of [...aliases, "spec://docs/docs://pages/secret"])
+          await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
+        assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
+      },
+      { disabledTools: ["docs.resource:docs://readme", "docs.resource:docs://pages/{slug}"] }
+    );
+  });
+
+  test("an allowed template grants reads of its expansions only", async () => {
+    await withGateway("tools=docs.resource:docs://pages/{slug}", async (mcp) => {
+      assert.deepEqual(
+        (await mcp.listResourceTemplates({ cursor: "" })).resourceTemplates.map(
+          (t) => t.uriTemplate
+        ),
+        ["spec://docs/docs://pages/{slug}"]
+      );
+      assert.equal(
+        (await mcp.readResource({ uri: "spec://docs/docs://pages/intro" })).contents[0].text,
+        "page:intro"
+      );
+      await assert.rejects(
+        mcp.readResource({ uri: "spec://docs/docs://readme" }),
+        /Resource unavailable/
+      );
+    });
+  });
+
+  test("prefers an exact prompt name and rejects ambiguous case-folded names", () => {
+    const document = {
+      type: "mcp",
+      title: "case",
+      prompts: [
+        { name: "Admin", arguments: [] },
+        { name: "admin", arguments: [] },
+        { name: "Report", arguments: [] },
+      ],
+    };
+    assert.equal(requirePrompt(document, "admin").name, "admin");
+    assert.equal(requirePrompt(document, "Admin").name, "Admin");
+    assert.equal(requirePrompt(document, "report").name, "Report");
+    assert.throws(() => requirePrompt(document, "ADMIN"), /Ambiguous prompt name/);
   });
 });

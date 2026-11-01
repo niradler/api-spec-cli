@@ -19,6 +19,7 @@ import {
   type GatewayDependencies,
   type GatewayMode,
 } from "./gateway.ts";
+import { LABEL_PATTERN, MAX_LABELS } from "./labels.ts";
 import { createMcpSession } from "./mcp-client.ts";
 import { specHome } from "./paths.ts";
 import { expandSecrets } from "./secrets.ts";
@@ -30,6 +31,7 @@ export interface GatewayConfig {
   port: number;
   specs?: string[];
   tools?: string[];
+  labels?: string[];
   disabledTools?: string[];
   allowedHosts?: string[];
   allowedOrigins?: string[];
@@ -63,6 +65,11 @@ const configSchema = {
     port: { type: "integer", minimum: 0, maximum: 65535 },
     specs: strings,
     tools: strings,
+    labels: {
+      type: "array",
+      maxItems: MAX_LABELS,
+      items: { type: "string", pattern: LABEL_PATTERN.source },
+    },
     disabledTools: strings,
     allowedHosts: strings,
     allowedOrigins: strings,
@@ -86,7 +93,7 @@ export function gatewayConfig(flags: Flags): GatewayConfig {
   for (const key of ["transport", "mode", "host", "auth"])
     if (flags[key] !== undefined) config[key] = flags[key];
   if (flags.port !== undefined) config.port = Number(flags.port);
-  for (const key of ["specs", "tools"])
+  for (const key of ["specs", "tools", "labels"])
     if (flags[key] !== undefined)
       config[key] = String(flags[key])
         .split(",")

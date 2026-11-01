@@ -182,7 +182,10 @@ export function resolveResourceUri(
 export function requirePrompt(spec: SpecDocument, name: string): McpPrompt {
   const prompts = exposedPrompts(spec);
   const lower = name.toLowerCase();
-  const prompt = prompts.find((p) => p.name.toLowerCase() === lower);
+  const folded = prompts.filter((p) => p.name.toLowerCase() === lower);
+  const prompt = prompts.find((p) => p.name === name) ?? (folded.length === 1 ? folded[0] : null);
+  if (folded.length > 1 && !prompt)
+    throw new Error(`Ambiguous prompt name: ${name}. Use the exact name from 'spec prompts'.`);
   if (!prompt)
     throw new Error(`Prompt not found: ${name}. Run 'spec prompts' to see available prompts.`);
   return prompt;
