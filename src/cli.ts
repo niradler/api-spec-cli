@@ -18,145 +18,8 @@ import { loadDotenv } from "./dotenv.ts";
 import { err, setFormat, setMaxStdout } from "./output.ts";
 import { sweepCache } from "./cache.ts";
 import { migrateLegacyHome } from "./paths.ts";
+import { commandHelp } from "./help.ts";
 import { VERSION } from "./version.ts";
-
-const HELP = `spec-cli — Explore and call APIs from the command line.
-Output is TOON by default. Designed for AI agents but works for humans too.
-
-Every command is stateless — specify the spec source on each call.
-
-SPEC SOURCE (required on every list/show/call):
-  --spec <name>                        Use a registered spec (auto-fetches + caches)
-  --openapi <url-or-file>              OpenAPI inline (no registration needed)
-  --graphql <url>                      GraphQL inline
-  --mcp-http <url>                     MCP streamable-HTTP inline
-  --mcp-sse <url>                      MCP SSE inline
-  --mcp-stdio "<cmd args>"             MCP stdio inline
-
-REGISTRY (register once, use anywhere):
-  spec add <name> --openapi <url>      Register an OpenAPI spec
-  spec add <name> --graphql <url>      Register a GraphQL endpoint
-  spec add <name> --mcp-http <url>     Register an MCP server (streamable-HTTP)
-  spec add <name> --mcp-sse <url>      Register an MCP server (SSE)
-  spec add <name> --mcp-stdio "<cmd>"  Register an MCP server (stdio)
-    Options: --description <text>  --base-url <url>  --auth <token>
-             --header k=v (repeatable)  --env KEY=VAL (repeatable, stdio only)
-             --cwd <path> (stdio only)
-             --allow-tool <glob> (repeatable)
-             --disable-tool <glob> (repeatable)
-             --oauth-flow browser|device|client_credentials
-             --oauth-client-id <id>                Pre-registered OAuth client ID
-             --oauth-client-secret <secret>        Client secret (stored securely, not in registry)
-             --oauth-callback-port <1-65535>        Fixed local port for browser callback
-
-  spec specs                           List all registered specs
-  spec specs --filter datadog          Search registered spec names
-  spec specs --compact false           Show full entry config
-  spec remove <name>                   Delete from registry
-  spec enable <name>                   Enable a disabled spec
-  spec disable <name>                  Disable without removing
-  spec refresh <name>                  Force re-fetch and update cache
-
-DISCOVER:
-  spec list --spec <name>              First 20 operations/tools (compact IDs)
-  spec list --spec <name> --filter user       Search by keyword
-  spec list --spec <name> --tag pets          OpenAPI tag or GraphQL kind
-  spec list --spec <name> --limit 10          Page size (default 20; 0 = all)
-  spec list --spec <name> --offset 20         Next page
-  spec list --spec <name> --top 10            Rank by call count (most-used first)
-  spec list --mcp-http <url>           Inline: no registration needed
-  spec search <query>                  Ranked search across all registered specs (first 20)
-  spec search <query> --spec <name>    Search within one spec
-  spec search <query> --spec a,b       Search within a set of specs
-  spec search "get*"                   Glob match on IDs, paths and descriptions
-  spec search <query> --limit 10       Page matches (default 20; 0 = all)
-  spec usage                           Show recorded usage for all specs
-  spec usage <name>                    Ranked operations for one spec
-
-INSPECT:
-  spec show --spec <name> <op>         Operation details (params, body, responses)
-  spec show --spec <name> <tool>       MCP tool input schema
-  spec types --spec <name>             List all schema/type names (OpenAPI/GraphQL)
-  spec types --spec <name> <TypeName>  Inspect one type
-
-CALL:
-  spec call --spec <name> <op> --var petId=1            Path/GraphQL vars
-  spec call --spec <name> <op> --query status=available  Query params
-  spec call --spec <name> <op> --data '{"name":"Rex"}'   JSON body / MCP args
-  spec call --spec <name> <op> --data-file args.json     Body from file
-  spec call --spec <name> <op> --data -                  Read JSON body from stdin (pipe)
-  spec call --spec <name> <op> --header X-Custom=val     Extra headers
-  spec call --spec <name> <op> --method PUT              Override HTTP method
-
-PER-CALL OVERRIDES (win over registry entry config):
-  --auth <token>        Override auth for this call
-  --auth-from <name>    Use stored OAuth access token from another spec
-  --base-url <url>      Override base URL for this call
-  --header k=v          Merge/override headers for this call
-
-CONFIG (persisted in .spec-cli/config.json — lowest priority):
-  spec config set baseUrl https://api.example.com
-  spec config set auth <token>
-  spec config set headers.X-API-Key <key>
-  spec config get
-  spec config unset auth
-
-POLICY (deny rules evaluated on spec call):
-  spec policy                          List rules (global + per-spec + project)
-  spec policy add --id no-prod --spec k8s --tool restart --when pod_name.prefix=prod --message "no prod restarts"
-  spec policy add --data '{"id":"no-deletes","tool":{"regex":"^delete_.*"},"message":"no deletes"}'
-  spec policy show <id>
-  spec policy remove <id> [--spec <name>]
-  spec policy clear [--spec <name>]
-  spec policy add --local ...          Write .spec-cli/policy.json
-  --policies-path <dir>                Per-spec JSON folder (default ~/.spec-cli/policies)
-
-GATEWAY:
-  spec mcp                            Serve registered specs over MCP stdio (meta mode)
-  spec mcp --transport http           Serve /mcp; use ?mode=tools for direct tools
-    Options: --config <file> --host <host> --port <port> --auth env:TOKEN
-             --mode meta|tools --specs a,b --tools a.tool1,b.tool2
-
-OTHER:
-  spec auth <name>                     Re-authenticate an OAuth-protected MCP spec
-  spec auth <name> --revoke            Clear stored OAuth token
-  spec validate <file-or-url>          Check OpenAPI spec for errors
-  spec skill install                   Install the agent skill into ~/.claude/skills/
-  spec skill path                      Print the bundled SKILL.md location
-  spec import <file>                   Bulk-register from mcp.json / Claude Desktop / Cursor
-  --version, -v                        Print the CLI version
-  --format json|text|yaml|toon         Output format (default: toon)
-  --max-bytes <n>                      Spill stdout over this size to a results file (default 30000; 0 = never)
-
-SECRETS & OVERRIDES:
-  Stored values (auth, headers, oauth secrets) may use \${VAR}, env:NAME, or file:/path.
-  A .env file in the working directory is auto-loaded (real env vars take precedence).
-  SPEC_URL=<url>                  Override a registered MCP/GraphQL spec's endpoint for this call
-  SPEC_HEADER_<NAME>=<value>      Add/override a header (SPEC_HEADER_X_TENANT -> X-Tenant)
-
-ENV VARS:
-  SPEC_HOME=~/.spec-cli           Home for registry, cache, tokens, policies and results
-  MCP_MAX_RETRIES=3               Retry attempts on connection failure (default: 3)
-  MCP_RETRY_DELAY=1000            Base retry delay in ms, doubles each attempt (default: 1000)
-  SPEC_OAUTH_CALLBACK_PORT=3141   Default fixed port for browser OAuth callback
-  SPEC_NO_USAGE=1                 Disable usage tracking
-  SPEC_NO_POLICY=1                Disable policy checks
-  SPEC_NO_CACHE=1                 Disable file cache (meta + call)
-  SPEC_META_CACHE_MS=1800000      Tools/schema cache TTL (default 30m)
-  SPEC_CALL_CACHE_MS=60000        Call result cache TTL (default 1m)
-  SPEC_NO_DOTENV=1                Disable .env auto-loading
-  SPEC_MAX_STDOUT=30000           Spill formatted output above this many chars to ~/.spec-cli/results/
-
-EXAMPLES:
-  spec add agno --mcp-http https://docs.agno.com/mcp --description "Agno docs"
-  spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json \\
-    --base-url https://petstore3.swagger.io/api/v3
-  spec specs
-  spec list  --spec agno
-  spec show  --spec agno search_agno
-  spec call  --spec agno search_agno --var query="agents"
-  spec call  --spec agno search_agno --var query="foo" --header X-Tenant=acme
-  spec list  --mcp-http https://docs.agno.com/mcp    (inline, no registration)`;
 
 const specSourceOptions = {
   spec: { type: "string", describe: "Use a registered spec" },
@@ -412,7 +275,7 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   if (isHelpRequest(args)) {
-    console.log(HELP);
+    console.log(commandHelp(args[0] === "help" ? args[1] : args[0]));
     return;
   }
 
