@@ -57,6 +57,18 @@ client.specs.add("templated", {
   args: [featuresServer],
   disabledTools: ["resource:docs://pages/{slug}"],
 });
+client.specs.add("public", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  allowedTools: ["resource:docs://pages/public*"],
+});
+client.specs.add("pinned", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  allowedTools: ["resource:docs://pages/intro"],
+});
 
 function withPolicy(rules) {
   writeFileSync(join(policyDir, "policy.json"), JSON.stringify({ rules }));
@@ -202,6 +214,30 @@ describe("tool filters and URI forms", () => {
     ]);
     try {
       await assert.rejects(client.resources.read("docs", "DOCS://pages/intro"), /pages blocked/);
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("an allow-list must match every URI form", async () => {
+    assert.equal(
+      (await client.resources.read("public", "docs://pages/public-a")).uri,
+      "docs://pages/public-a"
+    );
+    for (const uri of [
+      "docs://pages/public/../secret",
+      "docs://pages/public%2F..%2Fsecret",
+      "docs://pages/public/%2e%2e/secret",
+    ])
+      await assert.rejects(client.resources.read("public", uri), /excluded/, uri);
+  });
+
+  test("template policies apply when the template was filtered out of the spec", async () => {
+    withPolicy([
+      { id: "no-pages", tool: "resource:docs://pages/{slug}", message: "pages blocked" },
+    ]);
+    try {
+      await assert.rejects(client.resources.read("pinned", "docs://pages/intro"), /pages blocked/);
     } finally {
       clearPolicy();
     }
@@ -530,6 +566,20 @@ describe("Gateway relay", () => {
         assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
       },
       { disabledTools: ["docs.resource:docs://readme", "docs.resource:docs://pages/{slug}"] }
+    );
+  });
+
+  test("gateway template denials apply when the template was filtered out of the spec", async () => {
+    await withGateway(
+      "specs=pinned",
+      async (mcp) => {
+        assert.deepEqual((await mcp.listResources()).resources, []);
+        await assert.rejects(
+          mcp.readResource({ uri: "spec://pinned/docs://pages/intro" }),
+          /Resource unavailable/
+        );
+      },
+      { disabledTools: ["pinned.resource:docs://pages/{slug}"] }
     );
   });
 

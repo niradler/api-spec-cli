@@ -10,7 +10,7 @@ export async function specsCmd(args: string[]): Promise<void> {
     filter: flagString(flags, "filter"),
     compact: flags.compact !== "false",
     labels: flagList(flags, "label"),
-    match: flagBool(flags, "all-labels") ? "all" : "any",
+    labelMatch: flagBool(flags, "all-labels") ? "all" : "any",
   });
   out({ specs });
 }

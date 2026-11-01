@@ -15,7 +15,7 @@ import {
 } from "./execute.ts";
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
 import { createMcpSession, type McpSession } from "./mcp-client.ts";
-import { filterAllows, isGlob } from "./glob.ts";
+import { filterAllows, isGlob, matchTemplate } from "./glob.ts";
 import { matchesLabels, type LabelMatch } from "./labels.ts";
 import {
   operationId,
@@ -180,8 +180,11 @@ function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
 }
 
 function scopeAllows(scope: ToolScope, ids: string[]): boolean {
-  if (scope.tools && !ids.some((id) => scope.tools!.includes(id))) return false;
-  return !ids.some((id) => scope.disabledTools?.includes(id));
+  const matches = (patterns: string[], id: string) =>
+    patterns.some((pattern) => pattern === id || matchTemplate(pattern, id));
+  return ids.every(
+    (id) => (!scope.tools || matches(scope.tools, id)) && !matches(scope.disabledTools ?? [], id)
+  );
 }
 
 function relayMessages(spec: string, messages: GetPromptResult["messages"]) {
@@ -207,10 +210,6 @@ function isObject(value: unknown): value is JsonObject {
 
 function entryFilter(entry: NamedEntry): ToolFilter {
   return entry._section === "mcp" ? entry : entry.config || {};
-}
-
-function resourceTargets(entry: NamedEntry, document: McpSpec, uri: string): string[] {
-  return resourcePolicyTargets(uri, document.resourceTemplates, entryFilter(entry));
 }
 
 function entryAllows(entry: NamedEntry, ids: string[]): boolean {
@@ -419,7 +418,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const found: CatalogResource[] = [];
     for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
       for (const resource of document.resources ?? []) {
-        if (!visible(entry, resourceTargets(entry, document, resource.uri))) continue;
+        if (!visible(entry, resourcePolicyTargets(resource.uri))) continue;
         found.push({
           ...resource,
           uri: formatResourceUri(entry.name, resource.uri),
@@ -456,7 +455,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     if (
       document.type !== "mcp" ||
       resolveResourceUri(document, parsed.uri) !== parsed.uri ||
-      !visible(entry, resourceTargets(entry, document, parsed.uri))
+      !visible(entry, resourcePolicyTargets(parsed.uri))
     )
       throw new Error("Unavailable resource");
     const result = await session.run(() => readResourceRequest(document, entry, parsed.uri));

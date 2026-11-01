@@ -19,7 +19,7 @@ import {
   type GatewayDependencies,
   type GatewayMode,
 } from "./gateway.ts";
-import { LABEL_PATTERN, MAX_LABELS } from "./labels.ts";
+import { LABEL_PATTERN } from "./labels.ts";
 import { createMcpSession } from "./mcp-client.ts";
 import { specHome } from "./paths.ts";
 import { expandSecrets } from "./secrets.ts";
@@ -65,11 +65,7 @@ const configSchema = {
     port: { type: "integer", minimum: 0, maximum: 65535 },
     specs: strings,
     tools: strings,
-    labels: {
-      type: "array",
-      maxItems: MAX_LABELS,
-      items: { type: "string", pattern: LABEL_PATTERN.source },
-    },
+    labels: { ...strings, items: { type: "string", pattern: LABEL_PATTERN.source } },
     disabledTools: strings,
     allowedHosts: strings,
     allowedOrigins: strings,

@@ -81,7 +81,7 @@ export interface SpecListOptions {
   filter?: string;
   compact?: boolean;
   labels?: string[];
-  match?: LabelMatch;
+  labelMatch?: LabelMatch;
 }
 
 export interface AddResult {
@@ -101,7 +101,7 @@ export interface RefreshResult {
 export interface SearchOptions extends PageOptions {
   spec?: SpecSelection;
   labels?: string[];
-  match?: LabelMatch;
+  labelMatch?: LabelMatch;
 }
 
 export type SearchHit = GrepMatch & { rank: number; spec: string; type: SpecType };
@@ -229,7 +229,7 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     return labels;
   }
 
-  function listSpecs({ filter, compact = true, labels, match }: SpecListOptions = {}) {
+  function listSpecs({ filter, compact = true, labels, labelMatch }: SpecListOptions = {}) {
     const needle = filter?.toLowerCase();
     const wanted = labels === undefined ? undefined : normalizeLabels(labels);
     return allEntries(store.read())
@@ -239,7 +239,7 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
           entry.name.toLowerCase().includes(needle) ||
           (entry.description && entry.description.toLowerCase().includes(needle))
       )
-      .filter((entry) => matchesLabels(entry, wanted, match))
+      .filter((entry) => matchesLabels(entry, wanted, labelMatch))
       .map((entry) => (compact ? summary(entry) : entry));
   }
 
@@ -302,7 +302,7 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
 
   async function search(
     query: string,
-    { spec, labels, match, offset = 0, limit = 0 }: SearchOptions = {}
+    { spec, labels, labelMatch, offset = 0, limit = 0 }: SearchOptions = {}
   ): Promise<SearchResult> {
     let names = typeof spec === "string" ? [spec] : spec || [];
     const wanted = labels === undefined ? undefined : normalizeLabels(labels);
@@ -316,7 +316,9 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
       throw new Error("No registered specs. Run 'spec add' first.");
     if (wanted) {
       const candidates = names.length ? names : enabled.map((e) => e.name);
-      names = candidates.filter((name) => matchesLabels(findEntry(registry, name)!, wanted, match));
+      names = candidates.filter((name) =>
+        matchesLabels(findEntry(registry, name)!, wanted, labelMatch)
+      );
       if (names.length === 0)
         return { query, total: 0, showing: 0, results: [], ...(offset > 0 ? { offset } : {}) };
     }

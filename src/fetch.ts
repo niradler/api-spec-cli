@@ -229,7 +229,7 @@ async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Prom
       filterAllows(ids, entry.allowedTools, entry.disabledTools);
     const templates = resourceLoad.value?.resourceTemplates;
     const resources = resourceLoad.value?.resources?.filter((r) =>
-      allowed(...resourcePolicyTargets(r.uri, templates, entry))
+      allowed(...resourcePolicyTargets(r.uri))
     );
     const resourceTemplates = templates?.filter((t) =>
       allowed(resourcePolicyTarget(t.uriTemplate))

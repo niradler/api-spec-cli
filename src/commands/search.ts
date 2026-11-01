@@ -18,7 +18,7 @@ export async function searchCmd(args: string[]): Promise<void> {
         .map((name) => name.trim())
         .filter(Boolean),
       labels: flagList(flags, "label"),
-      match: flagBool(flags, "all-labels") ? "all" : "any",
+      labelMatch: flagBool(flags, "all-labels") ? "all" : "any",
       offset: parseOffset(flags),
       limit: parseLimit(flags),
     })

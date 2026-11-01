@@ -6,7 +6,6 @@ import type {
   McpSpec,
   SpecDocument,
   StringMap,
-  ToolFilter,
 } from "./types.ts";
 
 export interface FeatureListOptions {
@@ -135,34 +134,10 @@ function fullyDecoded(uri: string): string {
   }
 }
 
-function templateMatches(template: string, uri: string): boolean {
-  try {
-    return new UriTemplate(template).match(uri) !== null;
-  } catch {
-    return false;
-  }
-}
-
-function filterTemplates({ allowedTools = [], disabledTools = [] }: ToolFilter): string[] {
-  const prefix = resourcePolicyTarget("");
-  return [...allowedTools, ...disabledTools]
-    .filter((pattern) => pattern.startsWith(prefix))
-    .map((pattern) => pattern.slice(prefix.length))
-    .filter((template) => UriTemplate.isTemplate(template));
-}
-
-export function resourcePolicyTargets(
-  uri: string,
-  templates: McpResourceTemplate[] = [],
-  filter: ToolFilter = {}
-): string[] {
+export function resourcePolicyTargets(uri: string): string[] {
   const canonical = canonicalUri(uri);
-  const forms = [...new Set([uri, canonical, fullyDecoded(canonical)])];
-  const candidates = [...templates.map((t) => t.uriTemplate), ...filterTemplates(filter)];
-  const matched = candidates.filter((template) =>
-    forms.some((form) => templateMatches(template, form))
-  );
-  return [...new Set([...forms, ...matched])].map(resourcePolicyTarget);
+  const decoded = fullyDecoded(canonical);
+  return [...new Set([uri, canonical, decoded, canonicalUri(decoded)])].map(resourcePolicyTarget);
 }
 
 export function promptPolicyTarget(name: string): string {

@@ -141,11 +141,11 @@ describe("SDK specs", () => {
     ]);
     expect(names({ labels: ["orc"] })).toEqual(["billing", "pets"]);
     expect(names({ labels: ["orc:project=a", "orc:project=b"] })).toEqual(["billing", "pets"]);
-    expect(names({ labels: ["orc", "team:billing"], match: "all" })).toEqual(["billing"]);
+    expect(names({ labels: ["orc", "team:billing"], labelMatch: "all" })).toEqual(["billing"]);
     expect(names({ labels: ["nothing"] })).toEqual([]);
     expect(names({ labels: [] })).toEqual([]);
     expect(names({})).toEqual(["billing", "pets", "plain"]);
-    expect(() => names({ labels: ["orc"], match: "every" })).toThrow("Invalid label match");
+    expect(() => names({ labels: ["orc"], labelMatch: "every" })).toThrow("Invalid label match");
     expect(names({ labels: ["orc"], filter: "pet" })).toEqual(["pets"]);
     expect(client.specs.list({ labels: ["orc"], compact: false })[0].labels).toContain("orc");
     expect(() => client.specs.list({ labels: ["Bad"] })).toThrow("Invalid label 'Bad'");
@@ -215,7 +215,7 @@ describe("SDK search", () => {
     expect(loads.sort()).toEqual(["billing", "pets"]);
     const all = await client.operations.search("*", {
       labels: ["orc", "team:billing"],
-      match: "all",
+      labelMatch: "all",
     });
     expect(specsOf(all)).toEqual(["billing"]);
     expect(specsOf(await client.operations.search("*"))).toEqual(["billing", "pets", "plain"]);

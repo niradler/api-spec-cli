@@ -10,7 +10,6 @@ import { createMcpClient } from "./mcp-client.ts";
 import {
   promptArguments,
   promptPolicyTarget,
-  requireMcpSpec,
   requirePrompt,
   resolveResourceUri,
   resourcePolicyTargets,
@@ -245,11 +244,7 @@ export async function readResource(
   const ctx = callContext(entry, request);
   const uri = resolveResourceUri(spec, target, request.vars);
   const mcp = requireMcpEntry(entry);
-  const targets = resourcePolicyTargets(
-    uri,
-    requireMcpSpec(spec, "Resources").resourceTemplates,
-    mcp
-  );
+  const targets = resourcePolicyTargets(uri);
   if (!filterAllows(targets, mcp.allowedTools, mcp.disabledTools))
     throw new Error(`Resource not available: ${uri} is excluded by the spec's tool filter`);
   for (const target of targets)
