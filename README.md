@@ -85,7 +85,8 @@ client.specs.add("petstore", {
 client.specs.add("github", { type: "http", url: "https://api.githubcopilot.com/mcp/" });
 
 await client.operations.list("petstore");
-await client.operations.grep("issue*", { limit: 10 });
+await client.operations.search("create an issue", { spec: ["github", "petstore"], limit: 10 });
+// { query, total, showing, limit, results: [{ rank: 1, spec: "github", type, id, method, path }, ...] }
 await client.operations.call("petstore", "getPetById", { vars: { petId: "1" } });
 
 await client.close();
@@ -98,20 +99,25 @@ const { tools } = createSpecClient({ scopes: [{ specs: ["github", "petstore"] }]
 
 tools.specs(); // permitted registry entries
 await tools.search("pet by id"); // ranked: [{ id: "petstore.getPetById", ... }, ...]
+await tools.search("pet by id", "petstore"); // one spec, or an array for a set
 await tools.describe("petstore.getPetById"); // { id, spec, description, inputSchema }
 await tools.call("petstore.getPetById", { path: { petId: 1 } });
 ```
 
-| Export                                                                                      | Purpose                                                                                                                                     |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/grep/call), `tools`, `close` |
-| `createToolCatalog({ entries, load?, execute?, scopes?, session? })`                        | Catalog over any entry source; `scopes` intersect and use exact tool IDs                                                                    |
-| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection`  | Embed the MCP gateway or its five meta-tools in another MCP server                                                                          |
-| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec`     | Pure building blocks used by the CLI commands                                                                                               |
-| `createMcpSession({ interactiveAuth? })`                                                    | Scope MCP connections: `run(fn)` tracks clients opened inside `fn`, `close()` closes only those                                             |
-| `memoryRegistryStore`, `fileRegistryStore`                                                  | Registry backends; any `{ read, write }` object works                                                                                       |
-| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`)                                                                                    |
-| `setProjectDir(dir \| null)`                                                                | Where project config (`.spec-cli/config.json`) is read from; defaults to `cwd`, `null` disables it                                          |
+Search has one implementation used everywhere — `tools.search`, `client.operations.search` (same results as flat `rank`-numbered hits with `offset`/`limit` paging), the gateway `search_tools` meta-tool and `spec search`. It only returns tools the catalog permits (enabled specs, allow/disable filters, scopes). Every entry point searches all permitted specs, one spec, or a set (`spec: "a"` / `["a", "b"]`; gateway `spec` / `specs`; CLI `--spec a,b`). A spec that fails to load (upstream down, auth expired) is skipped and listed under `unavailable` instead of failing the whole search; the gateway lists only names, the SDK and CLI include the error, and searching only broken specs throws. A query containing `*` or `?` is a glob match on IDs, paths and descriptions instead of a ranked search.
+
+`search` is full-text (BM25 via [MiniSearch](https://github.com/lucaong/minisearch)) over tool name, path, summary, description and tags. Names are split on camelCase and punctuation; stop words, plurals and common API verbs (remove → delete, fetch → get, sign in → login, repository → repo, pull request → pull) are normalized; prefix and typo matching are on. The index is built per catalog scope and reused until the permitted tool set changes. Queries are capped at 256 characters.
+
+| Export                                                                                      | Purpose                                                                                                                                       |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/search/call), `tools`, `close` |
+| `createToolCatalog({ entries, load?, execute?, scopes?, session? })`                        | Catalog over any entry source; `scopes` intersect and use exact tool IDs                                                                      |
+| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection`  | Embed the MCP gateway or its five meta-tools in another MCP server                                                                            |
+| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec`     | Pure building blocks used by the CLI commands                                                                                                 |
+| `createMcpSession({ interactiveAuth? })`                                                    | Scope MCP connections: `run(fn)` tracks clients opened inside `fn`, `close()` closes only those                                               |
+| `memoryRegistryStore`, `fileRegistryStore`                                                  | Registry backends; any `{ read, write }` object works                                                                                         |
+| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`)                                                                                      |
+| `setProjectDir(dir \| null)`                                                                | Where project config (`.spec-cli/config.json`) is read from; defaults to `cwd`, `null` disables it                                            |
 
 Options accept `loadSpec` and `execute` overrides for tests or custom transports. Inline sources (`{ type: "openapi", source }`, `{ type: "stdio", command, args }`, …) can be passed anywhere a registered name is accepted by `operations.*`.
 
@@ -168,16 +174,19 @@ Inline specs use the same file cache (keyed from URL/command), so `listTools` is
 
 ### Search across specs
 
-`grep` searches operation/tool names and descriptions across all registered specs.
+`search` ranks operations/tools across all enabled specs (full-text over names, paths, summaries, descriptions and tags; see [SDK](#sdk) for how terms are normalized). Results are one flat list, best match first, each with its `rank`; ranking is across all searched specs. `--limit` (default 20, `0` = all) and `--offset` page that list.
 
 ```bash
-spec grep search                        # Substring match across all specs
-spec grep "get*"                        # Glob: anything starting with "get"
-spec grep "*list*"                      # Glob: anything containing "list"
-spec grep search --spec agno            # Limit to one spec
+spec search pet by id                   # Ranked: getPetById first
+spec search "remove a collaborator"     # Synonyms: remove → delete
+spec search "get*"                      # Glob: IDs, paths or descriptions starting with "get"
+spec search "*list*"                    # Glob: anything containing "list"
+spec search docs --spec agno            # Limit to one spec
+spec search delete --spec github,petstore  # Limit to a set of specs
+spec search delete --limit 10 --offset 10  # Ranks 11-20
 ```
 
-Matches on name and description. Case-insensitive. Plain text = substring, `*`/`?` = glob.
+Case-insensitive. Plain text = ranked search, `*`/`?` = glob. Disabled specs and disabled tools are excluded. `spec grep` is kept as an alias.
 
 ### List all specs in the registry
 
@@ -188,7 +197,7 @@ spec specs --compact false    # Full: includes source, config
 
 ### List operations / tools
 
-`list` is compact (IDs only) and returns the first **20** tools/operations by default. `total` is the full catalog size. Use `--filter`, `spec grep`, `--limit`, and `--offset` on large MCP servers instead of dumping hundreds of tools. `--limit 0` prints the whole catalog.
+`list` is compact (IDs only) and returns the first **20** tools/operations by default. `total` is the full catalog size. Use `--filter`, `spec search`, `--limit`, and `--offset` on large MCP servers instead of dumping hundreds of tools. `--limit 0` prints the whole catalog.
 
 ```bash
 spec list --spec agno                          # Registered spec (uses cache)
@@ -197,11 +206,11 @@ spec list --spec petstore --tag pets           # OpenAPI: filter by tag
 spec list --spec hashnode --tag mutation        # GraphQL: filter by kind
 spec list --spec petstore --limit 10           # First 10 only
 spec list --spec petstore --limit 10 --offset 10  # Next 10
-spec list --spec datadog --limit 0             # All tools (prefer grep on large servers)
+spec list --spec datadog --limit 0             # All tools (prefer search on large servers)
 spec list --mcp-http https://docs.agno.com/mcp # Inline: no registration needed
 spec specs --filter datadog                    # Find a registered server by name
-spec grep metric --spec datadog                # Search 300+ MCP tools without dumping them
-spec grep metric --spec datadog --limit 10 --offset 10
+spec search metric --spec datadog              # Search 300+ MCP tools without dumping them
+spec search metric --spec datadog --limit 10 --offset 10
 ```
 
 Compact output (`--format json` shown for readability):
@@ -409,7 +418,7 @@ spec add <name> --graphql <url> \
 - Plain text → **exact match** (case-insensitive): `"me"` matches only `me`
 - Glob patterns → anchored match: `"get*"` matches `getPetById`, `"*post*"` matches `createPost`
 
-Use `grep` for search (substring) — `--allow-tool` / `--disable-tool` for precise whitelists (exact or glob).
+Use `search` to find tools (ranked) — `--allow-tool` / `--disable-tool` for precise whitelists (exact or glob).
 
 ---
 
@@ -526,7 +535,7 @@ hint: rg <pattern> <path>
 - `list` returns only IDs by default — no schemas
 - `show` resolves `$ref` compactly — nested refs show as names, not explosions
 - `types` lets you inspect one schema at a time
-- `--limit` / `--offset` paginate large APIs (list/grep default to 20)
+- `--limit` / `--offset` paginate large APIs (list/search default to 20)
 - Oversized `call`/`show`/`list` output spills to `~/.spec-cli/results/` instead of flooding context
 - `--filter` and `--tag` narrow results before output
 

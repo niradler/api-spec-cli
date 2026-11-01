@@ -8,7 +8,7 @@ import { validateSpec } from "./commands/validate.ts";
 import { typesCmd } from "./commands/types.ts";
 import { addCmd } from "./commands/add.ts";
 import { specsCmd, registryMutate } from "./commands/specs.ts";
-import { grepCmd } from "./commands/grep.ts";
+import { searchCmd } from "./commands/search.ts";
 import { authCmd } from "./commands/auth.ts";
 import { usageCmd } from "./commands/usage.ts";
 import { skillCmd } from "./commands/skill.ts";
@@ -65,9 +65,11 @@ DISCOVER:
   spec list --spec <name> --offset 20         Next page
   spec list --spec <name> --top 10            Rank by call count (most-used first)
   spec list --mcp-http <url>           Inline: no registration needed
-  spec grep <pattern>                  Search across all registered specs (first 20)
-  spec grep <pattern> --spec <name>    Search within one spec
-  spec grep <pattern> --limit 10       Page grep matches (default 20; 0 = all)
+  spec search <query>                  Ranked search across all registered specs (first 20)
+  spec search <query> --spec <name>    Search within one spec
+  spec search <query> --spec a,b       Search within a set of specs
+  spec search "get*"                   Glob match on IDs, paths and descriptions
+  spec search <query> --limit 10       Page matches (default 20; 0 = all)
   spec usage                           Show recorded usage for all specs
   spec usage <name>                    Ranked operations for one spec
 
@@ -246,15 +248,15 @@ const commands = (rest: string[]): CommandModule[] => [
     handler: () => typesCmd(rest),
   },
   {
-    command: "grep <pattern>",
+    command: ["search <query..>", "grep <query..>"],
     describe: "Search operations across registered specs",
     builder: (y: Argv) =>
       y
-        .positional("pattern", { type: "string", describe: "Glob or substring pattern" })
-        .option("spec", specSourceOptions.spec)
+        .positional("query", { type: "string", describe: "Search text or glob pattern" })
+        .option("spec", { type: "string", describe: "Spec name or comma-separated set" })
         .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
         .option("offset", { type: "string", describe: "Skip the first N matches" }),
-    handler: () => grepCmd(rest),
+    handler: () => searchCmd(rest),
   },
   {
     command: "usage [name]",

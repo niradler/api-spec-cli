@@ -9,9 +9,16 @@ import {
 } from "./execute.ts";
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
 import { createMcpSession, type McpSession } from "./mcp-client.ts";
-import { matchFilter } from "./glob.ts";
-import { operationId, operations, type SpecOperation } from "./operations.ts";
+import { isGlob, matchFilter } from "./glob.ts";
+import {
+  operationId,
+  operationMatches,
+  operationSearchDocument,
+  operations,
+  type SpecOperation,
+} from "./operations.ts";
 import { enforcePolicy } from "./policy.ts";
+import { createSearchIndex, type SearchIndex } from "./search.ts";
 import { loadSpec } from "./resolve.ts";
 import type {
   JsonObject,
@@ -21,6 +28,8 @@ import type {
   SpecDocument,
   ToolFilter,
 } from "./types.ts";
+
+export type SpecSelection = string | string[];
 
 export interface ToolScope {
   specs?: string[];
@@ -52,12 +61,20 @@ export interface ToolCatalogOptions {
   session?: McpSession;
 }
 
+export interface CatalogSearchOptions {
+  unavailable?: (spec: string, error: unknown) => void;
+}
+
 export interface ToolCatalog {
   specs(): NamedEntry[];
-  tools(spec?: string): Promise<CatalogTool[]>;
+  tools(spec?: SpecSelection): Promise<CatalogTool[]>;
   find(id: string): Promise<CatalogTool>;
   describe(tool: string | CatalogTool): Promise<ToolDescription>;
-  search(query: string, spec?: string): Promise<CatalogTool[]>;
+  search(
+    query: string,
+    spec?: SpecSelection,
+    options?: CatalogSearchOptions
+  ): Promise<CatalogTool[]>;
   call(id: string, args?: JsonObject): Promise<CallToolResult>;
   close(): Promise<void>;
 }
@@ -93,51 +110,6 @@ function scopeAllowsSpec(scope: ToolScope, name: string): boolean {
 function scopeAllowsTool(scope: ToolScope, id: string): boolean {
   if (scope.tools && !scope.tools.includes(id)) return false;
   return !scope.disabledTools?.includes(id);
-}
-
-export function tokenize(text: string): string[] {
-  return text
-    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .toLowerCase()
-    .split(/[^a-z\d]+/)
-    .filter(Boolean);
-}
-
-function compact(text: string): string {
-  return text.toLowerCase().replace(/[^a-z\d]/g, "");
-}
-
-function searchFields(tool: CatalogTool): { tokens: string[]; weight: number }[] {
-  const operation = tool.operation;
-  const name = tool.id.slice(tool.spec.length + 1);
-  const summary = "summary" in operation ? operation.summary || "" : "";
-  const path = "path" in operation ? operation.path : "";
-  return [
-    { tokens: tokenize(name), weight: 4 },
-    { tokens: tokenize(path), weight: 2 },
-    { tokens: tokenize(`${summary} ${tool.description}`), weight: 1 },
-  ];
-}
-
-function termScore(term: string, fields: { tokens: string[]; weight: number }[]): number {
-  let best = 0;
-  for (const { tokens, weight } of fields) {
-    if (tokens.includes(term)) best = Math.max(best, weight);
-    else if (tokens.some((token) => token.startsWith(term))) best = Math.max(best, weight / 2);
-  }
-  return best;
-}
-
-export function searchScore(tool: CatalogTool, query: string, terms = tokenize(query)): number {
-  const fields = searchFields(tool);
-  const scores = terms.map((term) => termScore(term, fields));
-  const matched = scores.filter((score) => score > 0).length;
-  const phrase = compact(query);
-  const name = compact(tool.id.slice(tool.spec.length + 1));
-  const exact = name === phrase ? 8 : name.includes(phrase) ? 4 : 0;
-  if (matched === 0 && exact === 0) return 0;
-  return exact + scores.reduce((sum, score) => sum + score, 0) + (matched / terms.length) * 4;
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -214,13 +186,29 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
       );
   }
 
-  async function tools(spec?: string): Promise<CatalogTool[]> {
+  function selected(spec?: SpecSelection): NamedEntry[] {
     const permitted = specs();
-    if (spec && !permitted.some((entry) => entry.name === spec))
+    const names = typeof spec === "string" ? [spec] : spec || [];
+    if (names.length === 0) return permitted;
+    if (names.some((name) => !permitted.some((entry) => entry.name === name)))
       throw new Error("Unavailable spec");
+    return permitted.filter((entry) => names.includes(entry.name));
+  }
+
+  async function tools(
+    spec?: SpecSelection,
+    unavailable?: CatalogSearchOptions["unavailable"]
+  ): Promise<CatalogTool[]> {
     const found: CatalogTool[] = [];
-    for (const entry of permitted.filter((item) => !spec || item.name === spec)) {
-      const document = await load(entry);
+    for (const entry of selected(spec)) {
+      let document: SpecDocument;
+      try {
+        document = await load(entry);
+      } catch (error) {
+        if (!unavailable) throw error;
+        unavailable(entry.name, error);
+        continue;
+      }
       const filter = entryFilter(entry);
       for (const operation of operations(document)) {
         if ("kind" in operation && operation.kind === "subscription") continue;
@@ -263,14 +251,31 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     };
   }
 
-  async function search(query: string, spec?: string): Promise<CatalogTool[]> {
-    const terms = tokenize(query);
-    if (terms.length === 0) return [];
-    return (await tools(spec))
-      .map((tool) => ({ tool, score: searchScore(tool, query, terms) }))
-      .filter((match) => match.score > 0)
-      .sort((a, b) => b.score - a.score || a.tool.id.localeCompare(b.tool.id))
-      .map((match) => match.tool);
+  const searchIndexes = new Map<string, { signature: string; index: SearchIndex }>();
+
+  function searchIndex(scope: string, found: CatalogTool[]): SearchIndex {
+    const signature = found.map((tool) => tool.id).join("\n");
+    const cached = searchIndexes.get(scope);
+    if (cached?.signature === signature) return cached.index;
+    const index = createSearchIndex(
+      found.map((tool) => operationSearchDocument(tool.id, tool.operation))
+    );
+    searchIndexes.set(scope, { signature, index });
+    return index;
+  }
+
+  async function search(
+    query: string,
+    spec?: SpecSelection,
+    options: CatalogSearchOptions = {}
+  ): Promise<CatalogTool[]> {
+    const found = await tools(spec, options.unavailable);
+    if (isGlob(query)) return found.filter((tool) => operationMatches(tool.operation, query));
+    const byId = new Map(found.map((tool) => [tool.id, tool]));
+    const scope = [...new Set(typeof spec === "string" ? [spec] : spec || [])].sort().join(",");
+    return searchIndex(scope, found)
+      .search(query)
+      .map((id) => byId.get(id)!);
   }
 
   async function call(id: string, args: JsonObject = {}): Promise<CallToolResult> {

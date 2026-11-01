@@ -1,4 +1,9 @@
-import { createToolCatalog, type ToolCatalog, type ToolScope } from "./catalog.ts";
+import {
+  createToolCatalog,
+  type SpecSelection,
+  type ToolCatalog,
+  type ToolScope,
+} from "./catalog.ts";
 import { removeCachedSpec } from "./cache.ts";
 import { executeOperation, type CallRequest, type CallResult } from "./execute.ts";
 import { createMcpSession } from "./mcp-client.ts";
@@ -7,7 +12,7 @@ import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
   describeOperation,
   describeType,
-  grepOperations,
+  grepMatch,
   listOperations,
   listTypes,
   operations as specOperations,
@@ -73,21 +78,18 @@ export interface RefreshResult {
   count: number;
 }
 
-export interface GrepOptions extends PageOptions {
-  spec?: string;
+export interface SearchOptions extends PageOptions {
+  spec?: SpecSelection;
 }
 
-export interface GrepGroup {
-  spec: string;
-  type: SpecType;
-  matches: GrepMatch[];
-}
+export type SearchHit = GrepMatch & { rank: number; spec: string; type: SpecType };
 
-export interface GrepResult {
-  pattern: string;
+export interface SearchResult {
+  query: string;
   total: number;
   showing: number;
-  results: GrepGroup[];
+  results: SearchHit[];
+  unavailable?: { spec: string; error: string }[];
   offset?: number;
   limit?: number;
 }
@@ -112,7 +114,8 @@ export interface SpecClient {
     show(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
     types(ref: SpecRef): Promise<SpecTypes>;
     type(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
-    grep(pattern: string, options?: GrepOptions): Promise<GrepResult>;
+    search(query: string, options?: SearchOptions): Promise<SearchResult>;
+    grep(query: string, options?: SearchOptions): Promise<SearchResult>;
     call(ref: SpecRef, target: string, request?: CallRequest): Promise<CallResult>;
   };
   tools: ToolCatalog;
@@ -134,36 +137,6 @@ function requireRemoteMcp(entry: NamedEntry) {
       `'${entry.name}' is not an HTTP/SSE MCP spec — OAuth only applies to mcp http and sse entries`
     );
   return entry;
-}
-
-export function paginateGrep(
-  pattern: string,
-  groups: GrepGroup[],
-  { offset = 0, limit = 0 }: PageOptions = {}
-): GrepResult {
-  const flat = groups.flatMap((group) =>
-    group.matches.map((match) => ({ spec: group.spec, type: group.type, match }))
-  );
-  let page = flat;
-  if (offset > 0) page = page.slice(offset);
-  if (limit > 0) page = page.slice(0, limit);
-
-  const results: GrepGroup[] = [];
-  const index = new Map<string, GrepGroup>();
-  for (const row of page) {
-    let group = index.get(row.spec);
-    if (!group) {
-      group = { spec: row.spec, type: row.type, matches: [] };
-      index.set(row.spec, group);
-      results.push(group);
-    }
-    group.matches.push(row.match);
-  }
-
-  const result: GrepResult = { pattern, total: flat.length, showing: page.length, results };
-  if (offset > 0) result.offset = offset;
-  if (limit > 0 && page.length < flat.length) result.limit = limit;
-  return result;
 }
 
 export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
@@ -257,6 +230,48 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     },
   };
 
+  const tools = createToolCatalog({
+    entries: () => allEntries(store.read()),
+    load: (entry) => loadDocument(entry),
+    execute: executeRequest,
+    scopes: options.scopes,
+    session,
+  });
+
+  async function search(
+    query: string,
+    { spec, offset = 0, limit = 0 }: SearchOptions = {}
+  ): Promise<SearchResult> {
+    const names = typeof spec === "string" ? [spec] : spec || [];
+    for (const name of names) {
+      const entry = getEntry(name, store.read());
+      if (!entry.enabled) throw new Error(`Spec '${entry.name}' is disabled. Enable it first.`);
+    }
+    const searched = names.length || allEntries(store.read()).filter((e) => e.enabled).length;
+    if (searched === 0) throw new Error("No registered specs. Run 'spec add' first.");
+    const unavailable: { spec: string; error: unknown }[] = [];
+    const found = await tools.search(query, names, {
+      unavailable: (name, error) => unavailable.push({ spec: name, error }),
+    });
+    if (unavailable.length === searched) throw unavailable[0]!.error;
+    const end = limit > 0 ? offset + limit : undefined;
+    const results = found.slice(offset, end).map((tool, position) => ({
+      rank: offset + position + 1,
+      spec: tool.spec,
+      type: tool.document.type,
+      ...grepMatch(tool.operation),
+    }));
+    const result: SearchResult = { query, total: found.length, showing: results.length, results };
+    if (offset > 0) result.offset = offset;
+    if (limit > 0 && results.length < found.length) result.limit = limit;
+    if (unavailable.length > 0)
+      result.unavailable = unavailable.map(({ spec: name, error }) => ({
+        spec: name,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    return result;
+  }
+
   const operations: SpecClient["operations"] = {
     load: loadRef,
     async list(ref, listOptions = {}) {
@@ -273,33 +288,14 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     async type(ref, target) {
       return describeType((await loadRef(ref)).spec, target);
     },
-    async grep(pattern, grepOptions = {}) {
-      const entries = grepOptions.spec
-        ? [getEntry(grepOptions.spec, store.read())]
-        : allEntries(store.read()).filter((entry) => entry.enabled);
-      if (entries.length === 0) throw new Error("No registered specs. Run 'spec add' first.");
-      const groups: GrepGroup[] = [];
-      for (const entry of entries) {
-        const spec = await load(entry);
-        const matches = grepOperations(spec, pattern);
-        if (matches.length > 0) groups.push({ spec: entry.name, type: spec.type, matches });
-      }
-      return paginateGrep(pattern, groups, grepOptions);
-    },
+    search,
+    grep: search,
     async call(ref, target, request = {}) {
       const entry = withAuthFrom(entryFor(ref), request);
       const spec = await load(entry);
       return await session.run(() => executeRequest(spec, entry, target, request));
     },
   };
-
-  const tools = createToolCatalog({
-    entries: () => allEntries(store.read()),
-    load: (entry) => loadDocument(entry),
-    execute: executeRequest,
-    scopes: options.scopes,
-    session,
-  });
 
   return { specs, operations, tools, close: session.close };
 }

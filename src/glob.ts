@@ -1,27 +1,38 @@
-function globToRegex(pattern: string): RegExp {
-  return new RegExp(
-    "^" +
-      pattern
-        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-        .replace(/\*/g, ".*")
-        .replace(/\?/g, ".") +
-      "$",
-    "i"
-  );
+function wildcardMatch(pattern: string, text: string): boolean {
+  const glob = pattern.toLowerCase();
+  const value = text.toLowerCase();
+  let g = 0;
+  let v = 0;
+  let star = -1;
+  let mark = 0;
+  while (v < value.length) {
+    if (g < glob.length && (glob[g] === "?" || glob[g] === value[v])) {
+      g++;
+      v++;
+    } else if (g < glob.length && glob[g] === "*") {
+      star = g++;
+      mark = v;
+    } else if (star >= 0) {
+      g = star + 1;
+      v = ++mark;
+    } else return false;
+  }
+  while (glob[g] === "*") g++;
+  return g === glob.length;
 }
 
-function isGlob(pattern: string): boolean {
+export function isGlob(pattern: string): boolean {
   return pattern.includes("*") || pattern.includes("?");
 }
 
 export function matchGlob(pattern: string, str: string): boolean {
   if (!isGlob(pattern)) return str.toLowerCase().includes(pattern.toLowerCase());
-  return globToRegex(pattern).test(str);
+  return wildcardMatch(pattern, str);
 }
 
 export function matchFilter(pattern: string, str: string): boolean {
   if (!isGlob(pattern)) return str.toLowerCase() === pattern.toLowerCase();
-  return globToRegex(pattern).test(str);
+  return wildcardMatch(pattern, str);
 }
 
 export function applyToolFilter<T>(
