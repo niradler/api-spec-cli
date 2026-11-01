@@ -17,6 +17,7 @@ import {
   type ToolCatalogOptions,
   type ToolScope,
 } from "./catalog.ts";
+import { operationSummary } from "./operations.ts";
 import { allEntries, getRegistry } from "./registry.ts";
 import type { JsonObject, JsonSchema, Page, PageOptions } from "./types.ts";
 import { VERSION } from "./version.ts";
@@ -147,7 +148,7 @@ export async function handleMetaTool(
         )
       : await catalog.tools(spec);
   const result = page(
-    tools.map((tool) => ({ id: tool.id, description: tool.description.slice(0, 240) })),
+    tools.map((tool) => ({ id: tool.id, description: operationSummary(tool.operation) })),
     paging
   );
   return textResult(unavailable.length > 0 ? { ...result, unavailable } : result);

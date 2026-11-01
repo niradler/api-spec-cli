@@ -42,7 +42,7 @@ export interface OperationList {
 
 export interface GrepMatch {
   id: string;
-  [key: string]: unknown;
+  description: string;
 }
 
 export interface SpecTypes {
@@ -51,6 +51,8 @@ export interface SpecTypes {
   schemas?: string[];
   types?: Record<string, string[]>;
 }
+
+const SUMMARY_MAX = 120;
 
 const GRAPHQL_SCALARS = new Set(["String", "Int", "Float", "Boolean", "ID"]);
 
@@ -172,11 +174,17 @@ export function listOperations(spec: SpecDocument, options: ListOptions = {}): O
   return result;
 }
 
+export function operationSummary(operation: SpecOperation): string {
+  const text = ("summary" in operation && operation.summary) || operation.description || "";
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > SUMMARY_MAX ? `${line.slice(0, SUMMARY_MAX - 1).trimEnd()}…` : line;
+}
+
 export function grepMatch(operation: SpecOperation): GrepMatch {
-  if ("inputSchema" in operation) return { id: operation.name, description: operation.description };
-  if ("path" in operation)
-    return { id: operation.id, method: operation.method, path: operation.path };
-  return { id: operation.name, kind: operation.kind };
+  return {
+    id: "path" in operation ? operation.id : operation.name,
+    description: operationSummary(operation),
+  };
 }
 
 function grepText(operation: SpecOperation): string[] {

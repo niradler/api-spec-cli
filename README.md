@@ -174,7 +174,7 @@ Inline specs use the same file cache (keyed from URL/command), so `listTools` is
 
 ### Search across specs
 
-`search` ranks operations/tools across all enabled specs (full-text over names, paths, summaries, descriptions and tags; see [SDK](#sdk) for how terms are normalized). Results are one flat list, best match first, each with its `rank`; ranking is across all searched specs. `--limit` (default 20, `0` = all) and `--offset` page that list.
+`search` ranks operations/tools across all enabled specs (full-text over names, paths, summaries, descriptions and tags; see [SDK](#sdk) for how terms are normalized). Results are one flat list, best match first, each with its `rank`; ranking is across all searched specs. Every hit has the same help-style shape for every spec type — `rank, spec, type, id, description`, where `description` is a one-line summary (≤120 chars); run `spec show` for the full description and inputs, like `cli command --help`. The gateway `search_tools`/`list_tools` items use the same summary. `--limit` (default 20, `0` = all) and `--offset` page that list.
 
 ```bash
 spec search pet by id                   # Ranked: getPetById first

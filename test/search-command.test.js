@@ -117,6 +117,30 @@ describe("search - ranked text", () => {
     expect(hits("mygql")).toEqual(["createPost"]);
   });
 
+  test("every hit has the same help-style shape across spec types", async () => {
+    await searchCmd(["*"]);
+    expect(new Set(captured.results.map((hit) => hit.type))).toEqual(
+      new Set(["mcp", "openapi", "graphql"])
+    );
+    for (const hit of captured.results)
+      expect(Object.keys(hit)).toEqual(["rank", "spec", "type", "id", "description"]);
+    expect(captured.results.find((hit) => hit.id === "getPet").description).toBe("Get one pet");
+    expect(captured.results.find((hit) => hit.id === "me").description).toBe("Get current user");
+  });
+
+  test("summarises long descriptions to one short line", async () => {
+    specCache.mymcp = {
+      type: "mcp",
+      tools: [{ name: "long_tool", description: `First line\n\n  ${"word ".repeat(100)}` }],
+    };
+    await searchCmd(["long_tool", "--spec", "mymcp"]);
+    const { description } = captured.results[0];
+    expect(description.startsWith("First line word")).toBe(true);
+    expect(description).not.toContain("\n");
+    expect(description.length).toBe(120);
+    expect(description.endsWith("…")).toBe(true);
+  });
+
   test("case insensitive", async () => {
     await searchCmd(["SEARCH"]);
     expect(captured.results[0].id).toBe("search_docs");
