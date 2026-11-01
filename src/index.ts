@@ -83,6 +83,15 @@ export { operationQuery, operationSchema } from "./gateway-schema.ts";
 export { loadSpec, resolveEntry, resolveConfig, withAuthFrom } from "./resolve.ts";
 export type { ConfigOptions, ResolvedConfig } from "./resolve.ts";
 
+export {
+  LABEL_PATTERN,
+  MAX_LABELS,
+  isValidLabel,
+  matchesLabels,
+  normalizeLabels,
+} from "./labels.ts";
+export type { LabelMatch } from "./labels.ts";
+
 export { assertSpecName, entryFromSource, resolvedEntry, sectionOf } from "./sources.ts";
 
 export {

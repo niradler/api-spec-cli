@@ -17,6 +17,7 @@ import {
   type ToolCatalogOptions,
   type ToolScope,
 } from "./catalog.ts";
+import { isValidLabel } from "./labels.ts";
 import { operationSummary } from "./operations.ts";
 import { allEntries, getRegistry } from "./registry.ts";
 import type { JsonObject, JsonSchema, Page, PageOptions } from "./types.ts";
@@ -28,6 +29,7 @@ export interface GatewaySelection {
   mode: GatewayMode;
   specs?: string[];
   tools?: string[];
+  labels?: string[];
 }
 
 export type GatewayDependencies = Partial<ToolCatalogOptions>;
@@ -88,19 +90,20 @@ export function page<T>(items: T[], { offset = 0, limit = 20 }: PageOptions = {}
 
 export function parseSelection(params = new URLSearchParams()): GatewaySelection {
   for (const key of params.keys()) {
-    if (!["mode", "specs", "tools"].includes(key) || params.getAll(key).length !== 1)
+    if (!["mode", "specs", "tools", "labels"].includes(key) || params.getAll(key).length !== 1)
       throw new Error("Unknown or repeated gateway parameter");
   }
   const mode = params.get("mode") ?? "meta";
   if (mode !== "meta" && mode !== "tools") throw new Error("mode must be meta or tools");
   const selection: GatewaySelection = { mode };
-  for (const key of ["specs", "tools"] as const) {
+  for (const key of ["specs", "tools", "labels"] as const) {
     const raw = params.get(key);
     if (raw === null) continue;
     const values = raw.split(",").map((item) => item.trim());
     if (
       values.length > 100 ||
-      values.some((item) => !item || item.length > 256 || /[\x00-\x20]/.test(item))
+      values.some((item) => !item || item.length > 256 || /[\x00-\x20]/.test(item)) ||
+      (key === "labels" && !values.every(isValidLabel))
     )
       throw new Error(`Invalid ${key} filter`);
     selection[key] = [...new Set(values)];
@@ -164,7 +167,7 @@ export function createGateway(
     load: dependencies.load,
     execute: dependencies.execute,
     session: dependencies.session,
-    scopes: [config, { specs: selection.specs, tools: selection.tools }],
+    scopes: [config, { specs: selection.specs, tools: selection.tools, labels: selection.labels }],
   });
 }
 

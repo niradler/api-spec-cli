@@ -323,6 +323,21 @@ spec refresh <name>   # Force re-fetch and update cache
 
 `spec add` is an upsert — re-adding an existing name overwrites the entry (and clears its stale cache), since there's no separate `update` command. The response includes `"overwritten": true` when an existing entry was replaced.
 
+### Labels
+
+Tag specs to group and scope them. A label is 1-64 characters of `a-z 0-9 : = . _ -` (no uppercase, no silent lowercasing); a spec holds at most 32, stored deduplicated and sorted in the registry's optional `labels` field.
+
+```bash
+spec add petstore --openapi <url> --label orc --label orc:project=alpha   # repeatable
+spec label add petstore team:billing env=prod
+spec label remove petstore env=prod
+spec specs --label orc --label team:billing                # any match
+spec specs --label orc --label team:billing --all-labels   # every label
+spec search "delete a pet" --label orc:project=alpha       # combine with --spec: both must pass
+```
+
+SDK: `client.specs.list({ labels, match: "any" | "all" })`, `client.specs.addLabels(name, labels)`, `client.specs.removeLabels(name, labels)`, `client.operations.search(query, { labels, match })`, and `{ labels, labelMatch }` on a `ToolScope` so a catalog only loads and searches matching specs (an empty `labels` array in a scope matches nothing). The gateway accepts `?labels=a,b` (any match). `normalizeLabels` and `matchesLabels` are exported.
+
 ## Usage Ranking
 
 `spec` records which operations/tools you call so agents can surface the ones that matter:

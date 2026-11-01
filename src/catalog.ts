@@ -10,6 +10,7 @@ import {
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
 import { createMcpSession, type McpSession } from "./mcp-client.ts";
 import { isGlob, matchFilter } from "./glob.ts";
+import { matchesLabels, type LabelMatch } from "./labels.ts";
 import {
   operationId,
   operationMatches,
@@ -35,6 +36,8 @@ export interface ToolScope {
   specs?: string[];
   tools?: string[];
   disabledTools?: string[];
+  labels?: string[];
+  labelMatch?: LabelMatch;
 }
 
 export interface CatalogTool {
@@ -101,10 +104,11 @@ export function validateArguments(schema: JsonSchema, args: unknown): string | n
   return validation.valid ? null : validation.errorMessage || "Invalid arguments";
 }
 
-function scopeAllowsSpec(scope: ToolScope, name: string): boolean {
-  if (scope.specs && !scope.specs.includes(name)) return false;
-  if (scope.tools && !scope.tools.some((tool) => tool.startsWith(`${name}.`))) return false;
-  return true;
+function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
+  if (scope.specs && !scope.specs.includes(entry.name)) return false;
+  if (scope.tools && !scope.tools.some((tool) => tool.startsWith(`${entry.name}.`))) return false;
+  if (scope.labels && !scope.labels.length) return false;
+  return matchesLabels(entry, scope.labels, scope.labelMatch);
 }
 
 function scopeAllowsTool(scope: ToolScope, id: string): boolean {
@@ -181,9 +185,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
   function specs(): NamedEntry[] {
     return options
       .entries()
-      .filter(
-        (entry) => entry.enabled && scopes.every((scope) => scopeAllowsSpec(scope, entry.name))
-      );
+      .filter((entry) => entry.enabled && scopes.every((scope) => scopeAllowsSpec(scope, entry)));
   }
 
   function selected(spec?: SpecSelection): NamedEntry[] {

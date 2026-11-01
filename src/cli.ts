@@ -10,6 +10,7 @@ import { resourcesCmd } from "./commands/resources.ts";
 import { promptsCmd } from "./commands/prompts.ts";
 import { addCmd } from "./commands/add.ts";
 import { specsCmd, registryMutate } from "./commands/specs.ts";
+import { labelCmd } from "./commands/label.ts";
 import { searchCmd } from "./commands/search.ts";
 import { authCmd } from "./commands/auth.ts";
 import { usageCmd } from "./commands/usage.ts";
@@ -151,6 +152,12 @@ const commands = (rest: string[]): CommandModule[] => [
       y
         .positional("query", { type: "string", describe: "Search text or glob pattern" })
         .option("spec", { type: "string", describe: "Spec name or comma-separated set" })
+        .option("label", {
+          type: "string",
+          array: true,
+          describe: "Only specs with label (repeatable)",
+        })
+        .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" })
         .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
         .option("offset", { type: "string", describe: "Skip the first N matches" }),
     handler: () => searchCmd(rest),
@@ -170,6 +177,7 @@ const commands = (rest: string[]): CommandModule[] => [
         ...specSourceOptions,
         ...overrideOptions,
         description: { type: "string", describe: "Human-readable description" },
+        label: { type: "string", array: true, describe: "Label (repeatable)" },
         "oauth-flow": {
           type: "string",
           choices: ["browser", "device", "client_credentials"],
@@ -190,8 +198,24 @@ const commands = (rest: string[]): CommandModule[] => [
     builder: (y: Argv) =>
       y
         .option("compact", { type: "string", describe: "Set false to show full entry config" })
-        .option("filter", { type: "string", describe: "Substring search on name or description" }),
+        .option("filter", { type: "string", describe: "Substring search on name or description" })
+        .option("label", {
+          type: "string",
+          array: true,
+          describe: "Only specs with label (repeatable)",
+        })
+        .option("all-labels", { type: "boolean", describe: "Require every --label (default any)" }),
     handler: () => specsCmd(rest),
+  },
+  {
+    command: "label <action> <spec> <labels..>",
+    describe: "Add or remove labels on a registered spec",
+    builder: (y: Argv) =>
+      y
+        .positional("action", { type: "string", choices: ["add", "remove"] })
+        .positional("spec", { type: "string", describe: "Registry name" })
+        .positional("labels", { type: "string", describe: "Labels to add or remove" }),
+    handler: () => labelCmd(rest),
   },
   {
     command: "remove <name>",
