@@ -8,11 +8,19 @@ import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.
 import { expandSecrets } from "../secrets.ts";
 import { specHome } from "../paths.ts";
 
+export interface PendingAuthorization {
+  codeVerifier: string;
+  redirectUrl: string;
+  createdAt: number;
+  clientInfo?: OAuthClientInformationMixed;
+}
+
 export interface TokenFile {
   clientSecret?: string;
   tokens?: OAuthTokens;
   clientInfo?: OAuthClientInformationMixed;
   discovery?: OAuthDiscoveryState;
+  pending?: Record<string, PendingAuthorization>;
 }
 
 let tokenDirOverride: string | undefined;

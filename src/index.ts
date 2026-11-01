@@ -120,6 +120,8 @@ export {
 export { closeMcpClients, createMcpClient, createMcpSession } from "./mcp-client.ts";
 export type { McpConnectTarget, McpSession, McpSessionOptions } from "./mcp-client.ts";
 export { McpAuthRequiredError } from "./oauth/provider.ts";
+export type { OAuthFlowResult } from "./oauth/auth-flow.ts";
+export type { AuthorizationCallback, AuthorizationStart } from "./oauth/redirect-flow.ts";
 
 export { matchGlob, matchFilter, applyToolFilter } from "./glob.ts";
 

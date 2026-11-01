@@ -7,6 +7,18 @@ type Launcher = (
   callback: (error: Error | null) => void
 ) => unknown;
 
+export function assertHttpUrl(value: string, label: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`Invalid ${label} '${value}'.`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:")
+    throw new Error(`${label} must use HTTP or HTTPS.`);
+  return url;
+}
+
 export function openBrowser(
   value: string,
   {
@@ -14,10 +26,7 @@ export function openBrowser(
     launch = execFile as Launcher,
   }: { platform?: NodeJS.Platform; launch?: Launcher } = {}
 ): void {
-  const url = new URL(value);
-  if (!["https:", "http:"].includes(url.protocol)) {
-    throw new Error("OAuth authorization URL must use HTTP or HTTPS.");
-  }
+  const url = assertHttpUrl(value, "OAuth authorization URL");
 
   const options: ExecFileOptions = { windowsHide: true, timeout: 15000 };
   const onError = (error: Error | null) => {
