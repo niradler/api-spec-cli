@@ -8,11 +8,11 @@ import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.
 import { expandSecrets } from "../secrets.ts";
 import { specHome } from "../paths.ts";
 
-/** A redirect sign-in that was started but has not received its authorization code yet. */
 export interface PendingAuthorization {
-  state: string;
   codeVerifier: string;
   redirectUrl: string;
+  createdAt: number;
+  clientInfo?: OAuthClientInformationMixed;
 }
 
 export interface TokenFile {
@@ -20,7 +20,7 @@ export interface TokenFile {
   tokens?: OAuthTokens;
   clientInfo?: OAuthClientInformationMixed;
   discovery?: OAuthDiscoveryState;
-  pending?: PendingAuthorization;
+  pending?: Record<string, PendingAuthorization>;
 }
 
 let tokenDirOverride: string | undefined;

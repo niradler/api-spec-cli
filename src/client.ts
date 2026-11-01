@@ -136,9 +136,7 @@ export interface SpecClient {
     removeLabels(name: string, labels: string[]): string[];
     refresh(name: string): Promise<RefreshResult>;
     authorize(name: string): Promise<OAuthFlowResult>;
-    /** Begin a sign-in whose callback the caller receives at `redirectUrl`; no browser is opened. */
     startAuthorization(name: string, options: { redirectUrl: string }): Promise<AuthorizationStart>;
-    /** Exchange the code from the `redirectUrl` callback of `startAuthorization`. */
     finishAuthorization(name: string, callback: AuthorizationCallback): Promise<void>;
     revoke(name: string): void;
   };
@@ -298,7 +296,6 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     },
     async startAuthorization(name, { redirectUrl }) {
       const entry = requireRemoteMcp(getEntry(name, store.read()));
-      clearTokenFile(name);
       return await startRedirectAuthorization(name, entry, redirectUrl);
     },
     async finishAuthorization(name, callback) {
