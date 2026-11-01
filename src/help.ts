@@ -6,6 +6,8 @@ WORKFLOW (load only what you need):
   2. spec search <words> [--spec a,b]      Ranked tools across specs: rank, spec, type, id, description
   3. spec show --spec <name> <id>          Everything needed to call one tool
   4. spec call --spec <name> <id> --var k=v --query k=v --data '<json>'
+  MCP specs may also expose resources and prompts: spec list shows their counts;
+  read them with spec resources / spec prompts.
   No registration: replace --spec <name> with --openapi <url> (etc.) on list/show/call/types.
 
 COMMANDS:
@@ -65,22 +67,23 @@ ${SOURCE}`,
   types: `spec types --spec <name> [TypeName]
 List schema/type names, or inspect one (OpenAPI/GraphQL).
 ${SOURCE}`,
-  resources: `spec resources --spec <name> [resource] [--var k=v]
-Without a resource: list MCP resources and resource templates.
+  resources: `spec resources --spec <name> [resource] [--var k=v] [--filter s] [--limit 20] [--offset 0]
+Without a resource: list MCP resources and resource templates (filter and page with --filter/--limit/--offset).
 With one: read it. <resource> is a URI, a resource or template name, or a URI template.
   spec resources --spec docs                               List
   spec resources --spec docs readme                        Read by name
   spec resources --spec docs file:///README.md             Read by URI
   spec resources --spec docs repo-file --var path=src/a.ts Expand a template
-Policies match the resolved URI as the tool name. Alias: spec resource.
+Policies match resource:<uri> as the tool (spec policy add --tool "resource:file:///etc/*"). Alias: spec resource.
 ${SOURCE}`,
-  prompts: `spec prompts --spec <name> [prompt] [--var k=v] [--data '<json>']
-Without a prompt: list MCP prompts and their arguments.
+  prompts: `spec prompts --spec <name> [prompt] [--var k=v] [--data '<json>'] [--filter s] [--limit 20] [--offset 0]
+Without a prompt: list MCP prompts and their arguments (filter and page with --filter/--limit/--offset).
 With one: get the rendered prompt messages.
   spec prompts --spec docs                                 List
   spec prompts --spec docs summarize --var topic=billing   Get with arguments
   spec prompts --spec docs summarize --data '{"topic":"billing"}'
-Missing required arguments are reported before calling the server. Alias: spec prompt.
+Missing required arguments are reported before calling the server.
+Policies match prompt:<name> as the tool. Alias: spec prompt.
 ${SOURCE}`,
   add: `spec add <name> --openapi <url-or-file> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio "<cmd>"
   --description <text>  --base-url <url>  --auth <token>  --header k=v

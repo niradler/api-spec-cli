@@ -8,12 +8,25 @@ import type {
   StringMap,
 } from "./types.ts";
 
-export interface ResourceList {
+export interface FeatureListOptions {
+  filter?: string;
+  offset?: number;
+  limit?: number;
+}
+
+interface FeaturePage {
+  total: number;
+  showing: number;
+  offset: number;
+  limit?: number;
+}
+
+export interface ResourceList extends FeaturePage {
   resources: McpResource[];
   templates: McpResourceTemplate[];
 }
 
-export interface PromptList {
+export interface PromptList extends FeaturePage {
   prompts: McpPrompt[];
 }
 
@@ -23,17 +36,66 @@ export function requireMcpSpec(spec: SpecDocument, feature: "Resources" | "Promp
   return spec;
 }
 
-export function listResources(spec: SpecDocument): ResourceList {
+function page<T>(items: T[], options: FeatureListOptions): { page: FeaturePage; items: T[] } {
+  const filter = options.filter?.toLowerCase();
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 0;
+  const matched = filter
+    ? items.filter((item) => JSON.stringify(item).toLowerCase().includes(filter))
+    : items;
+  const sliced = matched.slice(offset, limit > 0 ? offset + limit : undefined);
+  const result: FeaturePage = { total: matched.length, showing: sliced.length, offset };
+  if (limit > 0 && sliced.length < matched.length) result.limit = limit;
+  return { page: result, items: sliced };
+}
+
+function exposedResources(spec: SpecDocument): McpSpec {
   const mcp = requireMcpSpec(spec, "Resources");
   if (!mcp.resources && !mcp.resourceTemplates)
     throw new Error(`MCP server '${mcp.title}' does not expose resources`);
-  return { resources: mcp.resources ?? [], templates: mcp.resourceTemplates ?? [] };
+  return mcp;
 }
 
-export function listPrompts(spec: SpecDocument): PromptList {
+function exposedPrompts(spec: SpecDocument): McpPrompt[] {
   const mcp = requireMcpSpec(spec, "Prompts");
   if (!mcp.prompts) throw new Error(`MCP server '${mcp.title}' does not expose prompts`);
-  return { prompts: mcp.prompts };
+  return mcp.prompts;
+}
+
+export function listResources(spec: SpecDocument, options: FeatureListOptions = {}): ResourceList {
+  const mcp = exposedResources(spec);
+  const entries: (McpResource | McpResourceTemplate)[] = [
+    ...(mcp.resources ?? []),
+    ...(mcp.resourceTemplates ?? []),
+  ];
+  const { page: info, items } = page(entries, options);
+  return {
+    ...info,
+    resources: items.filter((item): item is McpResource => "uri" in item),
+    templates: items.filter((item): item is McpResourceTemplate => "uriTemplate" in item),
+  };
+}
+
+export function listPrompts(spec: SpecDocument, options: FeatureListOptions = {}): PromptList {
+  const { page: info, items } = page(exposedPrompts(spec), options);
+  return { ...info, prompts: items };
+}
+
+export function featureCounts(spec: SpecDocument): { resources?: number; prompts?: number } {
+  if (spec.type !== "mcp") return {};
+  const counts: { resources?: number; prompts?: number } = {};
+  if (spec.resources || spec.resourceTemplates)
+    counts.resources = (spec.resources?.length ?? 0) + (spec.resourceTemplates?.length ?? 0);
+  if (spec.prompts) counts.prompts = spec.prompts.length;
+  return counts;
+}
+
+export function resourcePolicyTarget(uri: string): string {
+  return `resource:${uri}`;
+}
+
+export function promptPolicyTarget(name: string): string {
+  return `prompt:${name}`;
 }
 
 function requiredTemplateVars(template: string): string[] {
@@ -76,7 +138,7 @@ export function resolveResourceUri(
 }
 
 export function requirePrompt(spec: SpecDocument, name: string): McpPrompt {
-  const { prompts } = listPrompts(spec);
+  const prompts = exposedPrompts(spec);
   const lower = name.toLowerCase();
   const prompt = prompts.find((p) => p.name.toLowerCase() === lower);
   if (!prompt)

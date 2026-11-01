@@ -7,7 +7,13 @@ import type {
 import { callCacheKey, getCallCache, setCallCache } from "./cache.ts";
 import { buildGraphqlQuery } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
-import { promptArguments, requirePrompt, resolveResourceUri } from "./mcp-features.ts";
+import {
+  promptArguments,
+  promptPolicyTarget,
+  requirePrompt,
+  resolveResourceUri,
+  resourcePolicyTarget,
+} from "./mcp-features.ts";
 import { operationId, requireOperation } from "./operations.ts";
 import { enforcePolicy } from "./policy.ts";
 import { resolveConfig, type ConfigOptions, type ResolvedConfig } from "./resolve.ts";
@@ -237,7 +243,7 @@ export async function readResource(
   const ctx = callContext(entry, request);
   const uri = resolveResourceUri(spec, target, request.vars);
   const mcp = requireMcpEntry(entry);
-  enforcePolicy({ spec: ctx.specName, tool: uri, args: { ...request.vars } });
+  enforcePolicy({ spec: ctx.specName, tool: resourcePolicyTarget(uri), args: { ...request.vars } });
 
   const keyParts = mcpKeyParts(mcp, ctx, "readResource", uri, null);
   const hit = cached<McpResourceResult>(keyParts, ctx, uri);
@@ -257,7 +263,7 @@ export async function getPrompt(
   const prompt = requirePrompt(spec, name);
   const mcp = requireMcpEntry(entry);
   const args = promptArguments(prompt, mcpArguments(ctx, "prompt"));
-  enforcePolicy({ spec: ctx.specName, tool: prompt.name, args });
+  enforcePolicy({ spec: ctx.specName, tool: promptPolicyTarget(prompt.name), args });
 
   const keyParts = mcpKeyParts(mcp, ctx, "getPrompt", prompt.name, args);
   const hit = cached<McpPromptResult>(keyParts, ctx, prompt.name);

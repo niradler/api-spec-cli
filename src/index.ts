@@ -76,7 +76,7 @@ export type {
 } from "./execute.ts";
 
 export { listResources, listPrompts, resolveResourceUri, requirePrompt } from "./mcp-features.ts";
-export type { ResourceList, PromptList } from "./mcp-features.ts";
+export type { FeatureListOptions, ResourceList, PromptList } from "./mcp-features.ts";
 
 export { operationQuery, operationSchema } from "./gateway-schema.ts";
 

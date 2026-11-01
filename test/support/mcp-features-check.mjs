@@ -26,6 +26,14 @@ client.specs.add("docs", { type: "stdio", command: "node", args: [featuresServer
 client.specs.add("echo", { type: "stdio", command: "node", args: [echoServer] });
 client.specs.add("pets", { type: "openapi", source: openapiFixture });
 
+function withPolicy(rules) {
+  writeFileSync(join(policyDir, "policy.json"), JSON.stringify({ rules }));
+}
+
+function clearPolicy() {
+  rmSync(join(policyDir, "policy.json"), { force: true });
+}
+
 after(async () => {
   await client.close();
   rmSync(home, { recursive: true, force: true });
@@ -34,6 +42,9 @@ after(async () => {
 describe("SDK resources", () => {
   test("lists resources and templates", async () => {
     assert.deepEqual(await client.resources.list("docs"), {
+      total: 2,
+      showing: 2,
+      offset: 0,
       resources: [
         {
           uri: "docs://readme",
@@ -51,6 +62,30 @@ describe("SDK resources", () => {
         },
       ],
     });
+  });
+
+  test("filters and pages resources across resources and templates", async () => {
+    const filtered = await client.resources.list("docs", { filter: "pages" });
+    assert.equal(filtered.total, 1);
+    assert.deepEqual(filtered.resources, []);
+    assert.equal(filtered.templates[0].name, "page");
+    const paged = await client.resources.list("docs", { offset: 1, limit: 1 });
+    assert.deepEqual(
+      { total: paged.total, showing: paged.showing, offset: paged.offset },
+      { total: 2, showing: 1, offset: 1 }
+    );
+    assert.equal(paged.templates[0].name, "page");
+    const first = await client.resources.list("docs", { limit: 1 });
+    assert.equal(first.limit, 1);
+    assert.equal(first.resources[0].name, "readme");
+  });
+
+  test("list reports resource and prompt counts for MCP specs", async () => {
+    const docs = await client.operations.list("docs");
+    assert.equal(docs.resources, 2);
+    assert.equal(docs.prompts, 1);
+    const echo = await client.operations.list("echo");
+    assert.equal("resources" in echo || "prompts" in echo, false);
   });
 
   test("reads a resource by name or URI", async () => {
@@ -79,21 +114,16 @@ describe("SDK resources", () => {
     await assert.rejects(client.resources.read("docs", "nope"), /Resource not found: nope/);
   });
 
-  test("policy rules match the resolved resource URI", async () => {
-    const file = join(policyDir, "policy.json");
-    writeFileSync(
-      file,
-      JSON.stringify({
-        rules: [{ id: "no-pages", tool: "docs://pages/*", message: "pages blocked" }],
-      })
-    );
+  test("policy rules match resource:<uri>", async () => {
+    withPolicy([{ id: "no-pages", tool: "resource:docs://pages/*", message: "pages blocked" }]);
     try {
       await assert.rejects(
         client.resources.read("docs", "page", { vars: { slug: "secret" } }),
         /pages blocked/
       );
+      assert.equal((await client.resources.read("docs", "readme")).uri, "docs://readme");
     } finally {
-      rmSync(file);
+      clearPolicy();
     }
   });
 });
@@ -101,6 +131,9 @@ describe("SDK resources", () => {
 describe("SDK prompts", () => {
   test("lists prompts with arguments", async () => {
     assert.deepEqual(await client.prompts.list("docs"), {
+      total: 1,
+      showing: 1,
+      offset: 0,
       prompts: [
         {
           name: "summarize",
@@ -124,6 +157,27 @@ describe("SDK prompts", () => {
       description: "Summary prompt",
       messages: [{ role: "user", content: { type: "text", text: "Summarize billing (brief)" } }],
     });
+  });
+
+  test("filters prompts", async () => {
+    const result = await client.prompts.list("docs", { filter: "nothing-matches" });
+    assert.deepEqual(result.prompts, []);
+    assert.equal(result.total, 0);
+  });
+
+  test("policy rules match prompt:<name> and tool rules do not", async () => {
+    withPolicy([{ id: "tool-rule", tool: "summarize", message: "tool rule" }]);
+    try {
+      const result = await client.prompts.get("docs", "summarize", { arguments: { topic: "x" } });
+      assert.equal(result.prompt, "summarize");
+      withPolicy([{ id: "no-summary", tool: "prompt:summarize", message: "prompt blocked" }]);
+      await assert.rejects(
+        client.prompts.get("docs", "summarize", { arguments: { topic: "y" } }),
+        /prompt blocked/
+      );
+    } finally {
+      clearPolicy();
+    }
   });
 
   test("reports missing required arguments before calling the server", async () => {

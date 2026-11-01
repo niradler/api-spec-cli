@@ -50,6 +50,20 @@ describe("CLI resources and prompts", () => {
     expect(run("resource", "page", "--var", "slug=intro").contents[0].text).toBe("page:intro");
   });
 
+  test("filters and pages resource listings", () => {
+    const result = run("resources", "--filter", "readme", "--limit", "1");
+    expect(result.total).toBe(1);
+    expect(result.resources[0].uri).toBe("docs://readme");
+    expect(run("resources", "--offset", "1").templates[0].name).toBe("page");
+    expect(run("prompts", "--filter", "nope").prompts).toEqual([]);
+  });
+
+  test("list shows resource and prompt counts", () => {
+    const result = run("list");
+    expect(result.resources).toBe(2);
+    expect(result.prompts).toBe(1);
+  });
+
   test("lists and gets prompts", () => {
     expect(run("prompts").prompts[0].name).toBe("summarize");
     const result = run("prompt", "summarize", "--var", "topic=billing");

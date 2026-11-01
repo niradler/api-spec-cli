@@ -120,6 +120,9 @@ const commands = (rest: string[]): CommandModule[] => [
         .positional("resource", { type: "string", describe: "Resource URI, name, or template" })
         .options({
           ...sourceOptions,
+          filter: { type: "string", describe: "Substring search across fields" },
+          limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
+          offset: { type: "string", describe: "Skip the first N results" },
           var: { type: "string", array: true, describe: "Template variable k=v (repeatable)" },
           "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
@@ -131,6 +134,9 @@ const commands = (rest: string[]): CommandModule[] => [
     builder: (y: Argv) =>
       y.positional("prompt", { type: "string", describe: "Prompt name" }).options({
         ...sourceOptions,
+        filter: { type: "string", describe: "Substring search across fields" },
+        limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
+        offset: { type: "string", describe: "Skip the first N results" },
         var: { type: "string", array: true, describe: "Prompt argument k=v (repeatable)" },
         data: { type: "string", describe: "Prompt arguments as JSON, or - for stdin" },
         "data-file": { type: "string", describe: "Read prompt arguments from a file" },

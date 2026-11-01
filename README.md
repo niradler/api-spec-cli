@@ -89,9 +89,9 @@ await client.operations.search("create an issue", { spec: ["github", "petstore"]
 // { query, total, showing, limit, results: [{ rank: 1, spec: "github", type, id, method, path }, ...] }
 await client.operations.call("petstore", "getPetById", { vars: { petId: "1" } });
 
-await client.resources.list("docs"); // { resources, templates }
+await client.resources.list("docs", { filter: "page", limit: 10 }); // { total, showing, offset, resources, templates }
 await client.resources.read("docs", "page", { vars: { slug: "intro" } }); // { uri, contents }
-await client.prompts.list("docs"); // { prompts: [{ name, description, arguments }] }
+await client.prompts.list("docs"); // { total, showing, offset, prompts: [{ name, description, arguments }] }
 await client.prompts.get("docs", "summarize", { arguments: { topic: "billing" } }); // { messages, ... }
 
 await client.close();
@@ -259,7 +259,8 @@ spec types --spec hashnode PublishPostInput    # GraphQL input type
 MCP servers that advertise the `resources` or `prompts` capability expose them alongside their tools. Same shape as `types`: no argument lists, one argument reads or gets.
 
 ```bash
-spec resources --spec docs                                # Resources + resource templates
+spec resources --spec docs                                # Resources + resource templates (first 20)
+spec resources --spec docs --filter page --limit 10       # Filter and page like spec list
 spec resources --spec docs readme                         # Read by name
 spec resources --spec docs file:///README.md              # Read by URI
 spec resources --spec docs page --var slug=intro          # Expand a resource template (by name or URI template)
@@ -269,7 +270,7 @@ spec prompts --spec docs summarize --var topic=billing    # Rendered prompt mess
 spec prompts --spec docs summarize --data '{"topic":"billing"}'
 ```
 
-Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply: the resolved resource URI or the prompt name is matched as the tool (`spec policy add --tool "file:///etc/*"`). Reads share the call cache with tool calls.
+`spec list` on an MCP spec reports `resources` and `prompts` counts when the server advertises them, so agents know they exist. Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply with a kind prefix so tool rules don't catch them: resources match as `resource:<uri>` (`spec policy add --tool "resource:file:///etc/*"`) and prompts as `prompt:<name>`. Reads share the call cache with tool calls.
 
 ---
 

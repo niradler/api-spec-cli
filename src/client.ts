@@ -15,7 +15,13 @@ import {
   type McpResourceResult,
 } from "./execute.ts";
 import { createMcpSession } from "./mcp-client.ts";
-import { listPrompts, listResources, type PromptList, type ResourceList } from "./mcp-features.ts";
+import {
+  listPrompts,
+  listResources,
+  type FeatureListOptions,
+  type PromptList,
+  type ResourceList,
+} from "./mcp-features.ts";
 import { runOAuthFlow, type OAuthFlowResult } from "./oauth/auth-flow.ts";
 import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
@@ -129,11 +135,11 @@ export interface SpecClient {
     call(ref: SpecRef, target: string, request?: CallRequest): Promise<CallResult>;
   };
   resources: {
-    list(ref: SpecRef): Promise<ResourceList>;
+    list(ref: SpecRef, options?: FeatureListOptions): Promise<ResourceList>;
     read(ref: SpecRef, target: string, options?: ResourceReadOptions): Promise<McpResourceResult>;
   };
   prompts: {
-    list(ref: SpecRef): Promise<PromptList>;
+    list(ref: SpecRef, options?: FeatureListOptions): Promise<PromptList>;
     get(ref: SpecRef, name: string, options?: PromptGetOptions): Promise<McpPromptResult>;
   };
   tools: ToolCatalog;
@@ -328,8 +334,8 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
   }
 
   const resources: SpecClient["resources"] = {
-    async list(ref) {
-      return listResources((await loadRef(ref)).spec);
+    async list(ref, listOptions) {
+      return listResources((await loadRef(ref)).spec, listOptions);
     },
     async read(ref, target, { vars, ...config } = {}) {
       const { spec, entry } = await loadForRequest(ref, config);
@@ -338,8 +344,8 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
   };
 
   const prompts: SpecClient["prompts"] = {
-    async list(ref) {
-      return listPrompts((await loadRef(ref)).spec);
+    async list(ref, listOptions) {
+      return listPrompts((await loadRef(ref)).spec, listOptions);
     },
     async get(ref, name, { arguments: args, ...config } = {}) {
       const { spec, entry } = await loadForRequest(ref, config);
