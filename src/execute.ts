@@ -124,7 +124,8 @@ export async function executeOperation(
   if (spec.type === "mcp") return callMcp(spec, entry, operation as McpTool, ctx);
   const config = resolveConfig(request, entry);
   enforcePolicy({ spec: ctx.specName, tool: operationId(spec, operation), args: policyArgs(ctx) });
-  if (spec.type === "openapi") return callOpenApi(spec, config, operation as OpenApiOperation, ctx);
+  if (spec.type === "openapi")
+    return callOpenApi(spec, entry, config, operation as OpenApiOperation, ctx);
   return callGraphql(spec, config, operation as GraphqlOperation, ctx);
 }
 
@@ -192,13 +193,22 @@ async function readBody(res: Response): Promise<any> {
   return contentType.includes("json") ? await res.json() : await res.text();
 }
 
+export function serverUrl(spec: OpenApiSpec, source?: string): string {
+  const url = spec.servers?.[0]?.url || "";
+  if (!url || /^[a-z][a-z\d+.-]*:/i.test(url) || !source || !/^https?:\/\//i.test(source))
+    return url;
+  return new URL(url, source).href.replace(/\/$/, "");
+}
+
 async function callOpenApi(
   spec: OpenApiSpec,
+  entry: ResolvedEntry,
   config: ResolvedConfig,
   op: OpenApiOperation,
   ctx: CallContext
 ): Promise<OpenApiCallResult> {
-  const baseUrl = config.baseUrl || spec.servers?.[0]?.url || "";
+  const source = entry._section === "openapi" ? entry.source : undefined;
+  const baseUrl = config.baseUrl || serverUrl(spec, source);
   const vars = ctx.request.vars ?? {};
   let path = op.path;
   for (const [key, val] of Object.entries(vars)) {

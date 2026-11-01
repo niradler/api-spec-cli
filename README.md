@@ -97,7 +97,7 @@ await client.close();
 const { tools } = createSpecClient({ scopes: [{ specs: ["github", "petstore"] }] });
 
 tools.specs(); // permitted registry entries
-await tools.search("issue"); // [{ id: "github.list_issues", description, ... }]
+await tools.search("pet by id"); // ranked: [{ id: "petstore.getPetById", ... }, ...]
 await tools.describe("petstore.getPetById"); // { id, spec, description, inputSchema }
 await tools.call("petstore.getPetById", { path: { petId: 1 } });
 ```
@@ -136,7 +136,6 @@ Every command is stateless — you specify the spec source on each call. Two pat
 
 ```bash
 spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json \
-  --base-url https://petstore3.swagger.io/api/v3 \
   --description "Petstore example"
 
 spec add hashnode --graphql https://gql.hashnode.com --auth YOUR_TOKEN
@@ -263,9 +262,10 @@ echo '{"query":"agents"}' | spec call --spec agno search_agno --data -
 cat body.json | spec call --spec petstore addPet --data -
 
 # Inline (no registration)
-spec call --openapi https://petstore3.swagger.io/api/v3/openapi.json \
-  getPetById --var petId=1 --base-url https://petstore3.swagger.io/api/v3
+spec call --openapi https://petstore3.swagger.io/api/v3/openapi.json getPetById --var petId=1
 ```
+
+Relative OpenAPI `servers[0].url` values (e.g. `/api/v3`) resolve against the spec URL. Use `--base-url` to override, or when the spec is a local file.
 
 ### Per-call overrides
 
