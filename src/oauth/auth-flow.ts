@@ -26,7 +26,10 @@ function transportFor(entry: OAuthTarget, authProvider: OAuthClientProvider) {
     : new StreamableHTTPClientTransport(url, { authProvider });
 }
 
-async function connectOnce(entry: OAuthTarget, authProvider: OAuthClientProvider): Promise<void> {
+export async function connectOnce(
+  entry: OAuthTarget,
+  authProvider: OAuthClientProvider
+): Promise<void> {
   const client = new Client({ name: "spec-cli", version: "1.0.0" });
   await client.connect(transportFor(entry, authProvider));
   await client.close();

@@ -24,6 +24,12 @@ import {
   type ResourceList,
 } from "./mcp-features.ts";
 import { runOAuthFlow, type OAuthFlowResult } from "./oauth/auth-flow.ts";
+import {
+  finishRedirectAuthorization,
+  startRedirectAuthorization,
+  type AuthorizationCallback,
+  type AuthorizationStart,
+} from "./oauth/redirect-flow.ts";
 import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
   describeOperation,
@@ -130,6 +136,10 @@ export interface SpecClient {
     removeLabels(name: string, labels: string[]): string[];
     refresh(name: string): Promise<RefreshResult>;
     authorize(name: string): Promise<OAuthFlowResult>;
+    /** Begin a sign-in whose callback the caller receives at `redirectUrl`; no browser is opened. */
+    startAuthorization(name: string, options: { redirectUrl: string }): Promise<AuthorizationStart>;
+    /** Exchange the code from the `redirectUrl` callback of `startAuthorization`. */
+    finishAuthorization(name: string, callback: AuthorizationCallback): Promise<void>;
     revoke(name: string): void;
   };
   operations: {
@@ -285,6 +295,15 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
       const entry = requireRemoteMcp(getEntry(name, store.read()));
       clearTokenFile(name);
       return await runOAuthFlow(name, entry);
+    },
+    async startAuthorization(name, { redirectUrl }) {
+      const entry = requireRemoteMcp(getEntry(name, store.read()));
+      clearTokenFile(name);
+      return await startRedirectAuthorization(name, entry, redirectUrl);
+    },
+    async finishAuthorization(name, callback) {
+      const entry = requireRemoteMcp(getEntry(name, store.read()));
+      await finishRedirectAuthorization(name, entry, callback);
     },
     revoke(name) {
       requireRemoteMcp(getEntry(name, store.read()));
