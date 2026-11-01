@@ -28,6 +28,21 @@ mkdirSync(policyDir, { recursive: true });
 setPolicyDir(policyDir);
 setLocalPolicyFile(join(policyDir, "local-policy.json"));
 setPoliciesDir(null);
+const unnamedOpsFixture = join(home, "unnamed-ops.json");
+writeFileSync(
+  unnamedOpsFixture,
+  JSON.stringify({
+    openapi: "3.0.0",
+    info: { title: "ids", version: "1" },
+    servers: [{ url: "http://127.0.0.1:9" }],
+    paths: {
+      "/pets/{id}": {
+        get: { parameters: [{ name: "id", in: "path", required: true }], responses: {} },
+      },
+      "/pets/mine": { get: { responses: {} } },
+    },
+  })
+);
 
 const client = createSpecClient({ registry: memoryRegistryStore() });
 client.specs.add("docs", { type: "stdio", command: "node", args: [featuresServer] });
@@ -243,6 +258,13 @@ describe("tool filters and URI forms", () => {
     }
   });
 
+  test("rejects oversized resource URIs before matching", async () => {
+    await assert.rejects(
+      client.resources.read("docs", `docs://pages/${"a".repeat(9000)}`),
+      /exceeds 8192 characters/
+    );
+  });
+
   test("filter matches values, not field names", async () => {
     assert.equal((await client.resources.list("docs", { filter: "uri" })).total, 0);
   });
@@ -358,7 +380,10 @@ describe("Gateway relay", () => {
       broken: entryFromSource({ type: "stdio", command: "node", args: [partialServer, "broken"] }),
       echo: entryFromSource({ type: "stdio", command: "node", args: [echoServer] }),
     },
-    openapi: { pets: entryFromSource({ type: "openapi", source: openapiFixture }) },
+    openapi: {
+      pets: entryFromSource({ type: "openapi", source: openapiFixture }),
+      ids: entryFromSource({ type: "openapi", source: unnamedOpsFixture }),
+    },
     graphql: {},
   };
 
@@ -580,6 +605,18 @@ describe("Gateway relay", () => {
         );
       },
       { disabledTools: ["pinned.resource:docs://pages/{slug}"] }
+    );
+  });
+
+  test("operation IDs with braces are exact in gateway scopes", async () => {
+    await withGateway(
+      "mode=tools",
+      async (mcp) => {
+        const names = (await mcp.listTools()).tools.map((t) => t.name);
+        assert.equal(names.length, 1, names.join());
+        assert.doesNotMatch(names[0], /mine/);
+      },
+      { tools: ["ids.GET /pets/{id}"] }
     );
   });
 

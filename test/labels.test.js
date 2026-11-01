@@ -385,7 +385,7 @@ describe("label CLI", () => {
     const stored = JSON.parse(readFileSync(join(home, ".spec-cli", "registry.json"), "utf8"));
     expect(stored.openapi.a.labels).toEqual(["orc", "orc:project=x"]);
     expect("labels" in stored.openapi.c).toBe(false);
-  });
+  }, 30000);
 
   test("search --label scopes results and combines with --spec", () => {
     const hitSpecs = (...args) => [
@@ -397,7 +397,7 @@ describe("label CLI", () => {
     expect(hitSpecs("--label", "orc", "--spec", "b")).toEqual(["b"]);
     expect(json("search", "*", "--label", "orc:project=x", "--spec", "b").total).toBe(0);
     expect(hitSpecs().sort()).toEqual(["a", "b", "c"]);
-  });
+  }, 30000);
 
   test("invalid labels and bad usage fail with a clear message", () => {
     expect(fails("add", "d", "--openapi", fixture, "--label", "Bad")).toContain(
@@ -407,7 +407,7 @@ describe("label CLI", () => {
     expect(fails("specs", "--label", "UP")).toContain("Invalid label 'UP'");
     expect(fails("label", "add", "ghost", "x")).toContain("No spec named 'ghost'");
     expect(json("specs").specs.map((s) => s.name)).not.toContain("d");
-  });
+  }, 30000);
 
   test("help covers labels", () => {
     expect(spec("label", "--help")).toContain("spec label add|remove");

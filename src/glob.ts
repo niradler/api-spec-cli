@@ -32,8 +32,13 @@ export function matchGlob(pattern: string, str: string): boolean {
   return wildcardMatch(pattern, str);
 }
 
+function isResourceTemplate(pattern: string): boolean {
+  return /^resource:/i.test(pattern) && UriTemplate.isTemplate(pattern);
+}
+
 export function matchTemplate(pattern: string, str: string): boolean {
-  if (!UriTemplate.isTemplate(pattern)) return false;
+  if (!isResourceTemplate(pattern)) return false;
+  if (pattern.includes("*")) return wildcardMatch(pattern.replace(/\{[^}]*\}/g, "*"), str);
   try {
     return new UriTemplate(pattern.toLowerCase()).match(str.toLowerCase()) !== null;
   } catch {
@@ -43,7 +48,7 @@ export function matchTemplate(pattern: string, str: string): boolean {
 
 export function matchFilter(pattern: string, str: string): boolean {
   if (str.toLowerCase() === pattern.toLowerCase()) return true;
-  if (UriTemplate.isTemplate(pattern)) return matchTemplate(pattern, str);
+  if (isResourceTemplate(pattern)) return matchTemplate(pattern, str);
   return isGlob(pattern) && wildcardMatch(pattern, str);
 }
 

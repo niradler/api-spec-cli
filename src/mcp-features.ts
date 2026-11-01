@@ -107,6 +107,7 @@ export function resourcePolicyTarget(uri: string): string {
 }
 
 const UNRESERVED = /[A-Za-z0-9\-._~]/;
+const MAX_URI_LENGTH = 8192;
 
 function decodeUnreserved(uri: string): string {
   return uri.replace(/%([0-9a-f]{2})/gi, (escape, hex: string) => {
@@ -167,6 +168,13 @@ export function resolveResourceUri(
   target: string,
   vars: StringMap = {}
 ): string {
+  const uri = findResourceUri(spec, target, vars);
+  if (uri.length > MAX_URI_LENGTH)
+    throw new Error(`Resource URI exceeds ${MAX_URI_LENGTH} characters`);
+  return uri;
+}
+
+function findResourceUri(spec: SpecDocument, target: string, vars: StringMap): string {
   const mcp = requireMcpSpec(spec, "Resources");
   const lower = target.toLowerCase();
   const resource = mcp.resources?.find((r) => r.uri === target || r.name.toLowerCase() === lower);

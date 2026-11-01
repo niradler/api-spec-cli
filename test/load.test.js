@@ -83,6 +83,19 @@ describe("matchFilter", () => {
   test("* matches everything", () => {
     expect(matchFilter("*", "anything")).toBe(true);
   });
+
+  test("braces are literal outside resource patterns", () => {
+    expect(matchFilter("GET /pets/{id}", "GET /pets/{id}")).toBe(true);
+    expect(matchFilter("GET /pets/{id}", "GET /pets/mine")).toBe(false);
+    expect(matchFilter("prompt:{x}", "prompt:summarize")).toBe(false);
+  });
+
+  test("resource templates match their expansions", () => {
+    expect(matchFilter("resource:docs://pages/{slug}", "resource:docs://pages/intro")).toBe(true);
+    expect(matchFilter("resource:docs://pages/{slug}", "resource:docs://pages/a/b")).toBe(false);
+    expect(matchFilter("resource:docs://*/{id}", "resource:docs://pages/intro")).toBe(true);
+    expect(matchFilter("resource:docs://*/{id}", "resource:other://pages/intro")).toBe(false);
+  });
 });
 
 describe("MCP tool filtering logic", () => {

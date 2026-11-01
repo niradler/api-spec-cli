@@ -179,11 +179,17 @@ function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
   return matchesLabels(entry, scope.labels, scope.labelMatch);
 }
 
-function scopeAllows(scope: ToolScope, ids: string[]): boolean {
-  const matches = (patterns: string[], id: string) =>
-    patterns.some((pattern) => pattern === id || matchTemplate(pattern, id));
-  return ids.every(
-    (id) => (!scope.tools || matches(scope.tools, id)) && !matches(scope.disabledTools ?? [], id)
+function scopeAllows(scope: ToolScope, spec: string, targets: string[]): boolean {
+  const prefix = `${spec}.`;
+  const matches = (patterns: string[], target: string) =>
+    patterns.some(
+      (pattern) =>
+        pattern === prefix + target ||
+        (pattern.startsWith(prefix) && matchTemplate(pattern.slice(prefix.length), target))
+    );
+  return targets.every(
+    (target) =>
+      (!scope.tools || matches(scope.tools, target)) && !matches(scope.disabledTools ?? [], target)
   );
 }
 
@@ -403,8 +409,10 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
   }
 
   function visible(entry: NamedEntry, targets: string[]): boolean {
-    const ids = targets.map((target) => `${entry.name}.${target}`);
-    return entryAllows(entry, targets) && scopes.every((scope) => scopeAllows(scope, ids));
+    return (
+      entryAllows(entry, targets) &&
+      scopes.every((scope) => scopeAllows(scope, entry.name, targets))
+    );
   }
 
   function mcpEntry(spec: string): NamedEntry | undefined {
