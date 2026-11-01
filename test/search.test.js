@@ -198,7 +198,10 @@ describe("tool search ranking", () => {
     expect(failed).toEqual([["broken", "upstream secret detail"]]);
 
     const result = await handleMetaTool(tools, "search_tools", { query: "delete pet" });
-    expect(result.structuredContent.items[0].id).toBe("petstore.deletePet");
+    expect(result.structuredContent.items[0]).toEqual({
+      id: "petstore.deletePet",
+      description: "Deletes a pet.",
+    });
     expect(result.structuredContent.unavailable).toEqual(["broken"]);
     expect(JSON.stringify(result)).not.toContain("secret");
   });

@@ -42,6 +42,23 @@ describe("CLI integration", () => {
     expect(result.split("\n").length).toBeGreaterThan(10);
   });
 
+  test("main help is short and covers the search workflow", () => {
+    const result = runRaw("--help");
+    expect(result).toContain("spec search <words>");
+    expect(result).toContain("spec <command> --help");
+    expect(result.split("\n").length).toBeLessThan(40);
+  });
+
+  test("command help is specific to the command", () => {
+    for (const args of ["search --help", "help search", "grep -h"]) {
+      const result = runRaw(args);
+      expect(result.startsWith("spec search <query>")).toBe(true);
+      expect(result).not.toContain("COMMANDS:");
+    }
+    expect(runRaw("call --help")).toContain("--var petId=1");
+    expect(runRaw("unknown --help")).toContain("COMMANDS:");
+  });
+
   test("help stays plain text even with --format json", () => {
     const result = runRaw("help --format json");
     expect(result).not.toMatch(/"help":/);

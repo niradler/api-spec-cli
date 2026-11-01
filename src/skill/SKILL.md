@@ -5,129 +5,66 @@ description: Use when you need to explore or call an OpenAPI, GraphQL, or MCP AP
 
 # Exploring and calling APIs with `spec`
 
-`spec` (the `api-spec-cli` package) turns any OpenAPI, GraphQL, or MCP server into a small set of shell commands. It is built for agents: output is TOON by default, you load only the operation you need, and you can search across many specs at once instead of holding full schemas in context.
+`spec` (npm `api-spec-cli`) turns any OpenAPI, GraphQL or MCP server into shell commands built for agents: TOON output, ranked search across many specs, and you load only the one operation you call.
 
 Install: `npm install -g api-spec-cli` (or `npx api-spec-cli <command>`).
 
-## The workflow
+## Workflow — narrow before you load
 
-To serve registered specs to an MCP client, run `spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN --specs a,b`. HTTP `/mcp` defaults to `mode=meta`: use `list_specs`, `list_tools`/`search_tools`, `get_tool`, then `call_tool`. `/mcp?mode=tools` directly exposes allowed operations. Add `&specs=a,b&tools=a.tool1,b.tool2` to narrow the client URL. URL selections never widen server configuration, registry restrictions or call policies. For stdio select `--mode tools`; use `--config gateway.json` for server settings. Full configuration and limits are in the README's MCP gateway section.
+Works like `cli --help` → `cli <command> --help`: search returns one line per tool; `show` returns the full description and schema for the one you pick.
 
-Work in four steps. Each step narrows what you load into context — never fetch a whole spec when you can search then show one operation.
+1. **Register once** — `spec add <name> --openapi <url>` (or `--graphql`, `--mcp-http`, `--mcp-sse`, `--mcp-stdio "<cmd>"`). Fetched once, cached 30m.
+2. **Search** — `spec search <words>` → ranked hits `rank, spec, type, id, description` (one-line summary, same shape for every spec type). Page with `--limit` (default 20) / `--offset`; scope with `--spec a,b`.
+3. **Inspect one** — `spec show --spec <spec> <id>` → full description, params, body, responses / input schema.
+4. **Call** — `spec call --spec <spec> <id> --var k=v --query k=v --data '<json>'`.
 
-1. **Register once** — `spec add <name> ...`. Fetches and caches; later commands hit the cache.
-2. **Search** — `spec search <query>` (ranked full-text) across all specs, or `spec list --spec <name>` for one. Both return compact IDs only.
-3. **Inspect one** — `spec show --spec <name> <op>` returns everything needed to call it (params, body, response, related types) in a single result.
-4. **Call** — `spec call --spec <name> <op> ...`.
-
-## Register a spec
+Flags for any command: `spec <command> --help`. Overview: `spec --help`.
 
 ```bash
-spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json --base-url https://petstore3.swagger.io/api/v3
-spec add hashnode --graphql https://gql.hashnode.com
-spec add agno --mcp-http https://docs.agno.com/mcp
-spec add fs --mcp-stdio "npx -y @modelcontextprotocol/server-filesystem /tmp"
+spec add petstore --openapi https://petstore3.swagger.io/api/v3/openapi.json
+spec search "find pet by id"                 # all enabled specs, best match first
+spec search issue --spec github,jira --limit 10 --offset 10
+spec search "get*"                           # * or ? = glob on ids, paths, descriptions
+spec show --spec petstore getPetById
+spec call --spec petstore getPetById --var petId=1
 ```
 
-You can skip registration and pass an inline source on any command: `--openapi <url>`, `--graphql <url>`, `--mcp-http <url>`, `--mcp-sse <url>`, `--mcp-stdio "<cmd>"`.
+Without registering, replace `--spec <name>` with an inline source on `list`/`show`/`call`/`types`: `--openapi <url>`, `--mcp-http <url>`, …
 
-## Discover without burning context
-
-Large MCP servers (Datadog-scale, 300+ tools) should never be dumped. Search, then inspect one tool.
+## Browse one spec
 
 ```bash
-spec specs --filter datadog          # find the registered server
-spec search metric --spec datadog    # ranked search over tools (first 20)
-spec search metric --spec datadog --limit 10 --offset 10
-spec list --spec datadog --filter log --limit 20
-spec list --spec datadog --limit 0   # full catalog only if you really need it
-spec show --spec datadog <tool>      # one tool's schema
+spec specs                                 # registered specs
+spec list --spec petstore                  # first 20 compact ids
+spec list --spec petstore --filter pet --tag pets --top 10
+spec types --spec petstore Pet             # one schema (OpenAPI/GraphQL)
 ```
 
-```bash
-spec search "delete a pet"       # ranked match across every enabled spec
-spec search "get*"               # glob
-spec search delete --spec a,b    # only these specs; results are ranked hits (rank, spec, id)
-spec list --spec petstore        # first 20 compact IDs
-spec list --spec petstore --filter pet --limit 10
-spec list --spec petstore --top 10   # the 10 most-called operations first
-spec show --spec petstore getPetById  # full detail for ONE operation
-spec types --spec petstore Pet        # one schema at a time (OpenAPI/GraphQL)
-```
-
-`list` is compact by default — add `--compact false` only when you actually need schemas.
+Never dump a large catalog (`--limit 0`) when search or `--filter` will do. A spec that fails to load shows under `unavailable`; other specs are still searched.
 
 ## Call
 
 ```bash
-spec call --spec petstore getPetById --var petId=1
 spec call --spec petstore findPetsByStatus --query status=available
 spec call --spec petstore addPet --data '{"name":"Rex","photoUrls":[]}'
-spec call --spec hashnode publication --var host=blog.hashnode.dev
-spec call --spec agno search_agno --var query="how to create an agent"
-echo '{"query":"agents"}' | spec call --spec agno search_agno --data -
+echo '{"query":"agents"}' | spec call --spec agno search_docs --data -
+spec call --spec gh get_me --auth-from other --base-url https://staging.example.com
 ```
 
-## Output formats — pick the cheapest that works
+Output over 30000 chars is replaced by a stub with `path` to `~/.spec-cli/results/*.json` — read or `rg` that file. Use `--format json|yaml|text` only when TOON doesn't fit.
 
-```bash
-spec list --spec petstore --format toon   # default
-spec list --spec petstore --format json   # pretty-printed JSON
-spec show --spec petstore getPetById --format yaml
-```
+## Secrets and auth
 
-`toon` (Token-Oriented Object Notation) is the densest for tabular/list data and is the default when feeding results back into a model. Help and errors are always plain text.
+Never store raw secrets: use `${VAR}`, `env:NAME` or `file:/path` (`spec add gh --mcp-http <url> --auth env:GH_TOKEN`). A `.env` in the working directory is auto-loaded. OAuth MCP servers authenticate on `spec add`; re-run with `spec auth <name>`. Env vars and per-call overrides: `spec config --help`.
 
-If a result is over 30000 characters, stdout is a stub with `cached: true` and `path` pointing at `~/.spec-cli/results/*.json`. Read or `rg` that file instead of the full payload. `--max-bytes 0` disables this.
+## Cache
 
-## Usage ranking
+Tools cached 30m, call results 1m. `spec refresh <name>` re-fetches one spec; `SPEC_NO_CACHE=1` bypasses caching.
 
-`spec` records which operations you call. Use it to surface the operations that matter:
+## MCP gateway
 
-```bash
-spec list --spec petstore --top 5   # rank by call count
-spec usage                          # all recorded usage
-spec usage petstore                 # ranked operations for one spec
-```
+`spec mcp --specs a,b` (stdio) or `spec mcp --transport http --auth env:SPEC_GATEWAY_TOKEN`. Meta mode exposes `list_specs`, `list_tools` / `search_tools` (same ranked one-line hits, `spec`/`specs`/`limit`/`offset`), `get_tool` (full schema), `call_tool`. `?mode=tools` exposes tools directly; `&specs=a,b&tools=a.t1` narrows. See `spec mcp --help` and the README.
 
-Set `SPEC_NO_USAGE=1` to disable tracking.
+## Guardrails
 
-## Secrets and per-call overrides
-
-Never paste raw secrets into the registry. Store a placeholder and let it expand from the environment at call time:
-
-```bash
-spec add gh --mcp-http https://api.example.com/mcp --header "Authorization=Bearer ${GH_TOKEN}"
-spec add gh --mcp-http https://api.example.com/mcp --auth env:GH_TOKEN
-spec config set auth '${API_TOKEN}'
-```
-
-Override a registered spec's connection at call time without editing it:
-
-```bash
-SPEC_URL=https://staging.example.com/mcp spec call --spec gh some_tool
-SPEC_HEADER_X_TENANT=acme spec list --spec gh
-spec call --spec petstore getPet --auth-from gh
-```
-
-A `.env` file next to where you run `spec` is auto-loaded (real environment variables win over it).
-
-## Auth (MCP OAuth)
-
-OAuth 2.1 MCP servers are handled automatically on `spec add` (browser flow opens; DCR servers need no flags). For pre-registered apps like GitHub, pass `--oauth-client-id` and `--oauth-callback-port`. Re-authenticate with `spec auth <name>`; tokens refresh automatically and persist across invocations.
-
-## Quick reference
-
-```bash
-spec specs                     # list registered specs
-spec search <query>            # ranked search across all specs
-spec import <file>             # bulk-register from mcp.json
-spec list --spec <name>        # compact operation list
-spec show --spec <name> <op>   # full detail for one operation
-spec call --spec <name> <op>   # call it
-spec policy                    # list call-blocking rules
-spec policy add --id no-prod --spec k8s --tool restart --when pod_name.prefix=prod
-spec usage [<name>]            # usage ranking
-spec validate <file-or-url>    # check an OpenAPI spec for errors
-spec help                      # full flag reference
-```
+`spec policy` lists call-blocking rules (`spec policy --help`). `spec usage [name]` and `spec list --top N` rank by call count.
