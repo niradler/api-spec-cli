@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { createToolCatalog } from "../src/index.ts";
+import { createToolCatalog, handleMetaTool } from "../src/index.ts";
 import { createSearchIndex, searchTerms, tokenize } from "../src/search.ts";
 
 function op(id, method, path, summary, tags = []) {
@@ -179,5 +179,27 @@ describe("tool search ranking", () => {
     expect((await ids(tools, "delete pet"))[0]).toBe("petstore.deletePet");
     entries[0] = entry("petstore", { disabledTools: ["deletePet"] });
     expect(await ids(tools, "delete pet")).not.toContain("petstore.deletePet");
+  });
+
+  test("skips specs that fail to load only when asked, and reports them", async () => {
+    const tools = createToolCatalog({
+      entries: () => [entry("petstore"), entry("broken")],
+      load: async (item) => {
+        if (item.name === "broken") throw new Error("upstream secret detail");
+        return petstore;
+      },
+    });
+    await expect(tools.search("delete pet")).rejects.toThrow("upstream secret detail");
+    const failed = [];
+    const found = await tools.search("delete pet", undefined, {
+      unavailable: (spec, error) => failed.push([spec, error.message]),
+    });
+    expect(found[0].id).toBe("petstore.deletePet");
+    expect(failed).toEqual([["broken", "upstream secret detail"]]);
+
+    const result = await handleMetaTool(tools, "search_tools", { query: "delete pet" });
+    expect(result.structuredContent.items[0].id).toBe("petstore.deletePet");
+    expect(result.structuredContent.unavailable).toEqual(["broken"]);
+    expect(JSON.stringify(result)).not.toContain("secret");
   });
 });

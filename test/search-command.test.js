@@ -180,6 +180,15 @@ describe("search - --spec filter", () => {
     expect(hits("myapi")).toEqual([]);
   });
 
+  test("reports specs that fail to load and keeps searching the rest", async () => {
+    specCache.broken = null;
+    registryEntries.openapi.broken = { type: "openapi", enabled: true, source: "missing.json" };
+    await searchCmd(["create", "a", "pet"]);
+    expect(captured.results[0].id).toBe("createPet");
+    expect(captured.unavailable.map((item) => item.spec)).toEqual(["broken"]);
+    await expect(searchCmd(["create", "--spec", "broken"])).rejects.toThrow();
+  });
+
   test("rejects an unknown spec in the set", async () => {
     await expect(searchCmd(["create", "--spec", "myapi,nope"])).rejects.toThrow("nope");
   });

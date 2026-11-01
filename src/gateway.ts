@@ -137,19 +137,20 @@ export async function handleMetaTool(
   if (name === "call_tool")
     return await catalog.call(String(args.tool), args.arguments as JsonObject);
   const spec = args.spec as string | undefined;
+  const unavailable: string[] = [];
   const tools =
     name === "search_tools"
-      ? await catalog.search(String(args.query), [
-          ...(spec ? [spec] : []),
-          ...((args.specs as string[] | undefined) ?? []),
-        ])
+      ? await catalog.search(
+          String(args.query),
+          [...(spec ? [spec] : []), ...((args.specs as string[] | undefined) ?? [])],
+          { unavailable: (failed) => unavailable.push(failed) }
+        )
       : await catalog.tools(spec);
-  return textResult(
-    page(
-      tools.map((tool) => ({ id: tool.id, description: tool.description.slice(0, 240) })),
-      paging
-    )
+  const result = page(
+    tools.map((tool) => ({ id: tool.id, description: tool.description.slice(0, 240) })),
+    paging
   );
+  return textResult(unavailable.length > 0 ? { ...result, unavailable } : result);
 }
 
 export function createGateway(

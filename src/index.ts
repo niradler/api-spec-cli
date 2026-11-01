@@ -20,6 +20,7 @@ export type {
   ToolCatalogOptions,
   ToolScope,
   SpecSelection,
+  CatalogSearchOptions,
   CatalogTool,
   ToolDescription,
 } from "./catalog.ts";

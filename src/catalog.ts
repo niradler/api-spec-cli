@@ -61,12 +61,20 @@ export interface ToolCatalogOptions {
   session?: McpSession;
 }
 
+export interface CatalogSearchOptions {
+  unavailable?: (spec: string, error: unknown) => void;
+}
+
 export interface ToolCatalog {
   specs(): NamedEntry[];
   tools(spec?: SpecSelection): Promise<CatalogTool[]>;
   find(id: string): Promise<CatalogTool>;
   describe(tool: string | CatalogTool): Promise<ToolDescription>;
-  search(query: string, spec?: SpecSelection): Promise<CatalogTool[]>;
+  search(
+    query: string,
+    spec?: SpecSelection,
+    options?: CatalogSearchOptions
+  ): Promise<CatalogTool[]>;
   call(id: string, args?: JsonObject): Promise<CallToolResult>;
   close(): Promise<void>;
 }
@@ -187,10 +195,20 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return permitted.filter((entry) => names.includes(entry.name));
   }
 
-  async function tools(spec?: SpecSelection): Promise<CatalogTool[]> {
+  async function tools(
+    spec?: SpecSelection,
+    unavailable?: CatalogSearchOptions["unavailable"]
+  ): Promise<CatalogTool[]> {
     const found: CatalogTool[] = [];
     for (const entry of selected(spec)) {
-      const document = await load(entry);
+      let document: SpecDocument;
+      try {
+        document = await load(entry);
+      } catch (error) {
+        if (!unavailable) throw error;
+        unavailable(entry.name, error);
+        continue;
+      }
       const filter = entryFilter(entry);
       for (const operation of operations(document)) {
         if ("kind" in operation && operation.kind === "subscription") continue;
@@ -246,8 +264,12 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return index;
   }
 
-  async function search(query: string, spec?: SpecSelection): Promise<CatalogTool[]> {
-    const found = await tools(spec);
+  async function search(
+    query: string,
+    spec?: SpecSelection,
+    options: CatalogSearchOptions = {}
+  ): Promise<CatalogTool[]> {
+    const found = await tools(spec, options.unavailable);
     if (isGlob(query)) return found.filter((tool) => operationMatches(tool.operation, query));
     const byId = new Map(found.map((tool) => [tool.id, tool]));
     const scope = [...new Set(typeof spec === "string" ? [spec] : spec || [])].sort().join(",");

@@ -89,6 +89,7 @@ export interface SearchResult {
   total: number;
   showing: number;
   results: SearchHit[];
+  unavailable?: { spec: string; error: string }[];
   offset?: number;
   limit?: number;
 }
@@ -246,9 +247,13 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
       const entry = getEntry(name, store.read());
       if (!entry.enabled) throw new Error(`Spec '${entry.name}' is disabled. Enable it first.`);
     }
-    if (!allEntries(store.read()).some((entry) => entry.enabled))
-      throw new Error("No registered specs. Run 'spec add' first.");
-    const found = await tools.search(query, names);
+    const searched = names.length || allEntries(store.read()).filter((e) => e.enabled).length;
+    if (searched === 0) throw new Error("No registered specs. Run 'spec add' first.");
+    const unavailable: { spec: string; error: unknown }[] = [];
+    const found = await tools.search(query, names, {
+      unavailable: (name, error) => unavailable.push({ spec: name, error }),
+    });
+    if (unavailable.length === searched) throw unavailable[0]!.error;
     const end = limit > 0 ? offset + limit : undefined;
     const results = found.slice(offset, end).map((tool, position) => ({
       rank: offset + position + 1,
@@ -259,6 +264,11 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     const result: SearchResult = { query, total: found.length, showing: results.length, results };
     if (offset > 0) result.offset = offset;
     if (limit > 0 && results.length < found.length) result.limit = limit;
+    if (unavailable.length > 0)
+      result.unavailable = unavailable.map(({ spec: name, error }) => ({
+        spec: name,
+        error: error instanceof Error ? error.message : String(error),
+      }));
     return result;
   }
 
