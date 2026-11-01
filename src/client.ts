@@ -5,8 +5,17 @@ import {
   type ToolScope,
 } from "./catalog.ts";
 import { removeCachedSpec } from "./cache.ts";
-import { executeOperation, type CallRequest, type CallResult } from "./execute.ts";
+import {
+  executeOperation,
+  getPrompt,
+  readResource,
+  type CallRequest,
+  type CallResult,
+  type McpPromptResult,
+  type McpResourceResult,
+} from "./execute.ts";
 import { createMcpSession } from "./mcp-client.ts";
+import { listPrompts, listResources, type PromptList, type ResourceList } from "./mcp-features.ts";
 import { runOAuthFlow, type OAuthFlowResult } from "./oauth/auth-flow.ts";
 import { clearTokenFile, saveTokenFile } from "./oauth/tokens.ts";
 import {
@@ -22,7 +31,7 @@ import {
   type SpecTypes,
 } from "./operations.ts";
 import { allEntries, fileRegistryStore, findEntry, getEntry, putEntry } from "./registry.ts";
-import { loadSpec as loadSpecDocument, withAuthFrom } from "./resolve.ts";
+import { loadSpec as loadSpecDocument, withAuthFrom, type ConfigOptions } from "./resolve.ts";
 import { assertSpecName, entryFromSource, resolvedEntry } from "./sources.ts";
 import { getUsage } from "./usage.ts";
 import type {
@@ -37,6 +46,7 @@ import type {
   SpecRef,
   SpecSource,
   SpecType,
+  StringMap,
 } from "./types.ts";
 
 export type SpecLoader = (
@@ -118,8 +128,24 @@ export interface SpecClient {
     grep(query: string, options?: SearchOptions): Promise<SearchResult>;
     call(ref: SpecRef, target: string, request?: CallRequest): Promise<CallResult>;
   };
+  resources: {
+    list(ref: SpecRef): Promise<ResourceList>;
+    read(ref: SpecRef, target: string, options?: ResourceReadOptions): Promise<McpResourceResult>;
+  };
+  prompts: {
+    list(ref: SpecRef): Promise<PromptList>;
+    get(ref: SpecRef, name: string, options?: PromptGetOptions): Promise<McpPromptResult>;
+  };
   tools: ToolCatalog;
   close(): Promise<void>;
+}
+
+export interface ResourceReadOptions extends ConfigOptions {
+  vars?: StringMap;
+}
+
+export interface PromptGetOptions extends ConfigOptions {
+  arguments?: Record<string, unknown>;
 }
 
 function summary(entry: NamedEntry): SpecSummary {
@@ -291,11 +317,35 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     search,
     grep: search,
     async call(ref, target, request = {}) {
-      const entry = withAuthFrom(entryFor(ref), request);
-      const spec = await load(entry);
+      const { spec, entry } = await loadForRequest(ref, request);
       return await session.run(() => executeRequest(spec, entry, target, request));
     },
   };
 
-  return { specs, operations, tools, close: session.close };
+  async function loadForRequest(ref: SpecRef, request: ConfigOptions): Promise<LoadedSpec> {
+    const entry = withAuthFrom(entryFor(ref), request);
+    return { spec: await load(entry), entry };
+  }
+
+  const resources: SpecClient["resources"] = {
+    async list(ref) {
+      return listResources((await loadRef(ref)).spec);
+    },
+    async read(ref, target, { vars, ...config } = {}) {
+      const { spec, entry } = await loadForRequest(ref, config);
+      return await session.run(() => readResource(spec, entry, target, { ...config, vars }));
+    },
+  };
+
+  const prompts: SpecClient["prompts"] = {
+    async list(ref) {
+      return listPrompts((await loadRef(ref)).spec);
+    },
+    async get(ref, name, { arguments: args, ...config } = {}) {
+      const { spec, entry } = await loadForRequest(ref, config);
+      return await session.run(() => getPrompt(spec, entry, name, { ...config, data: args }));
+    },
+  };
+
+  return { specs, operations, resources, prompts, tools, close: session.close };
 }

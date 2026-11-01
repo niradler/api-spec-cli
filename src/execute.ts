@@ -1,7 +1,13 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type {
+  CallToolResult,
+  GetPromptResult,
+  ReadResourceResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { callCacheKey, getCallCache, setCallCache } from "./cache.ts";
 import { buildGraphqlQuery } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
+import { promptArguments, requirePrompt, resolveResourceUri } from "./mcp-features.ts";
 import { operationId, requireOperation } from "./operations.ts";
 import { enforcePolicy } from "./policy.ts";
 import { resolveConfig, type ConfigOptions, type ResolvedConfig } from "./resolve.ts";
@@ -52,6 +58,18 @@ export interface McpCallResult {
 }
 
 export type CallResult = OpenApiCallResult | GraphqlCallResult | McpCallResult;
+
+export interface McpResourceResult {
+  uri: string;
+  contents: ReadResourceResult["contents"];
+}
+
+export interface McpPromptResult {
+  prompt: string;
+  arguments: Record<string, string>;
+  description: string | null;
+  messages: GetPromptResult["messages"];
+}
 
 interface CallContext {
   specName: string | undefined;
@@ -115,11 +133,7 @@ export async function executeOperation(
   target: string,
   request: CallRequest = {}
 ): Promise<CallResult> {
-  const ctx: CallContext = {
-    specName: registeredName(entry),
-    request,
-    data: serializeData(request.data),
-  };
+  const ctx = callContext(entry, request);
   const operation = requireOperation(spec, target, { exact: request.exact });
   if (spec.type === "mcp") return callMcp(spec, entry, operation as McpTool, ctx);
   const config = resolveConfig(request, entry);
@@ -129,27 +143,33 @@ export async function executeOperation(
   return callGraphql(spec, config, operation as GraphqlOperation, ctx);
 }
 
-async function callMcp(
-  _spec: McpSpec,
-  entry: ResolvedEntry,
-  tool: McpTool,
-  ctx: CallContext
-): Promise<McpCallResult> {
+type McpResolvedEntry = Extract<ResolvedEntry, { _section: "mcp" }>;
+
+function requireMcpEntry(entry: ResolvedEntry): McpResolvedEntry {
   if (entry._section !== "mcp") throw new Error("MCP spec requires an MCP entry");
-  let toolArgs: Record<string, unknown> = {};
+  return entry;
+}
+
+function mcpArguments(ctx: CallContext, target: string): Record<string, unknown> {
+  let args: Record<string, unknown> = {};
   if (ctx.data) {
     try {
-      toolArgs = JSON.parse(ctx.data);
+      args = JSON.parse(ctx.data);
     } catch {
-      throw new Error("--data must be valid JSON when calling an MCP tool");
+      throw new Error(`--data must be valid JSON when calling an MCP ${target}`);
     }
   }
-  const vars = ctx.request.vars ?? {};
-  toolArgs = { ...toolArgs, ...vars };
+  return { ...args, ...ctx.request.vars };
+}
 
-  enforcePolicy({ spec: ctx.specName, tool: tool.name, args: toolArgs });
-
-  const keyParts = {
+function mcpKeyParts(
+  entry: McpResolvedEntry,
+  ctx: CallContext,
+  method: string,
+  operation: string,
+  data: unknown
+) {
+  return {
     spec: cacheIdentity(ctx, {
       url: entry.type === "stdio" ? undefined : entry.url,
       source: entry.type === "stdio" ? entry.command : undefined,
@@ -158,34 +178,101 @@ async function callMcp(
       entry.type === "stdio"
         ? [entry.command, ...(entry.args || [])].filter(Boolean).join(" ")
         : entry.url,
-    method: "callTool",
-    operation: tool.name,
-    vars,
+    method,
+    operation,
+    vars: ctx.request.vars ?? {},
     query: {},
-    data: toolArgs,
+    data,
     headers: entry.type === "stdio" ? {} : entry.headers || {},
   };
-  const hit = cached<McpCallResult>(keyParts, ctx, tool.name);
-  if (hit) return hit;
+}
 
+async function withMcpClient<T>(entry: McpResolvedEntry, fn: (client: Client) => Promise<T>) {
   const client = await createMcpClient(entry);
   try {
-    const result = (await client.callTool({
-      name: tool.name,
-      arguments: toolArgs,
-    })) as CallToolResult;
-    const isError = result.isError === true;
-    const payload: McpCallResult = {
-      tool: tool.name,
-      arguments: toolArgs,
-      isError,
-      content: result.content,
-      result,
-    };
-    return store(keyParts, ctx, tool.name, payload, !isError);
+    return await fn(client);
   } finally {
     await client.close();
   }
+}
+
+async function callMcp(
+  _spec: McpSpec,
+  entry: ResolvedEntry,
+  tool: McpTool,
+  ctx: CallContext
+): Promise<McpCallResult> {
+  const mcp = requireMcpEntry(entry);
+  const toolArgs = mcpArguments(ctx, "tool");
+  enforcePolicy({ spec: ctx.specName, tool: tool.name, args: toolArgs });
+
+  const keyParts = mcpKeyParts(mcp, ctx, "callTool", tool.name, toolArgs);
+  const hit = cached<McpCallResult>(keyParts, ctx, tool.name);
+  if (hit) return hit;
+
+  const result = (await withMcpClient(mcp, (client) =>
+    client.callTool({ name: tool.name, arguments: toolArgs })
+  )) as CallToolResult;
+  const isError = result.isError === true;
+  const payload: McpCallResult = {
+    tool: tool.name,
+    arguments: toolArgs,
+    isError,
+    content: result.content,
+    result,
+  };
+  return store(keyParts, ctx, tool.name, payload, !isError);
+}
+
+function callContext(entry: ResolvedEntry, request: CallRequest): CallContext {
+  return { specName: registeredName(entry), request, data: serializeData(request.data) };
+}
+
+export async function readResource(
+  spec: SpecDocument,
+  entry: ResolvedEntry,
+  target: string,
+  request: CallRequest = {}
+): Promise<McpResourceResult> {
+  const ctx = callContext(entry, request);
+  const uri = resolveResourceUri(spec, target, request.vars);
+  const mcp = requireMcpEntry(entry);
+  enforcePolicy({ spec: ctx.specName, tool: uri, args: { ...request.vars } });
+
+  const keyParts = mcpKeyParts(mcp, ctx, "readResource", uri, null);
+  const hit = cached<McpResourceResult>(keyParts, ctx, uri);
+  if (hit) return hit;
+
+  const result = await withMcpClient(mcp, (client) => client.readResource({ uri }));
+  return store(keyParts, ctx, uri, { uri, contents: result.contents }, true);
+}
+
+export async function getPrompt(
+  spec: SpecDocument,
+  entry: ResolvedEntry,
+  name: string,
+  request: CallRequest = {}
+): Promise<McpPromptResult> {
+  const ctx = callContext(entry, request);
+  const prompt = requirePrompt(spec, name);
+  const mcp = requireMcpEntry(entry);
+  const args = promptArguments(prompt, mcpArguments(ctx, "prompt"));
+  enforcePolicy({ spec: ctx.specName, tool: prompt.name, args });
+
+  const keyParts = mcpKeyParts(mcp, ctx, "getPrompt", prompt.name, args);
+  const hit = cached<McpPromptResult>(keyParts, ctx, prompt.name);
+  if (hit) return hit;
+
+  const result = await withMcpClient(mcp, (client) =>
+    client.getPrompt({ name: prompt.name, arguments: args })
+  );
+  const payload: McpPromptResult = {
+    prompt: prompt.name,
+    arguments: args,
+    description: result.description || null,
+    messages: result.messages,
+  };
+  return store(keyParts, ctx, prompt.name, payload, true);
 }
 
 async function readBody(res: Response): Promise<any> {

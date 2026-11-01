@@ -89,6 +89,11 @@ await client.operations.search("create an issue", { spec: ["github", "petstore"]
 // { query, total, showing, limit, results: [{ rank: 1, spec: "github", type, id, method, path }, ...] }
 await client.operations.call("petstore", "getPetById", { vars: { petId: "1" } });
 
+await client.resources.list("docs"); // { resources, templates }
+await client.resources.read("docs", "page", { vars: { slug: "intro" } }); // { uri, contents }
+await client.prompts.list("docs"); // { prompts: [{ name, description, arguments }] }
+await client.prompts.get("docs", "summarize", { arguments: { topic: "billing" } }); // { messages, ... }
+
 await client.close();
 ```
 
@@ -108,16 +113,17 @@ Search has one implementation used everywhere — `tools.search`, `client.operat
 
 `search` is full-text (BM25 via [MiniSearch](https://github.com/lucaong/minisearch)) over tool name, path, summary, description and tags. Names are split on camelCase and punctuation; stop words, plurals and common API verbs (remove → delete, fetch → get, sign in → login, repository → repo, pull request → pull) are normalized; prefix and typo matching are on. The index is built per catalog scope and reused until the permitted tool set changes. Queries are capped at 256 characters.
 
-| Export                                                                                      | Purpose                                                                                                                                       |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/search/call), `tools`, `close` |
-| `createToolCatalog({ entries, load?, execute?, scopes?, session? })`                        | Catalog over any entry source; `scopes` intersect and use exact tool IDs                                                                      |
-| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection`  | Embed the MCP gateway or its five meta-tools in another MCP server                                                                            |
-| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec`     | Pure building blocks used by the CLI commands                                                                                                 |
-| `createMcpSession({ interactiveAuth? })`                                                    | Scope MCP connections: `run(fn)` tracks clients opened inside `fn`, `close()` closes only those                                               |
-| `memoryRegistryStore`, `fileRegistryStore`                                                  | Registry backends; any `{ read, write }` object works                                                                                         |
-| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`)                                                                                      |
-| `setProjectDir(dir \| null)`                                                                | Where project config (`.spec-cli/config.json`) is read from; defaults to `cwd`, `null` disables it                                            |
+| Export                                                                                      | Purpose                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createSpecClient(options)`                                                                 | `specs` (list/get/add/remove/enable/disable/refresh/authorize/revoke), `operations` (load/list/show/types/type/search/call), `resources` (list/read), `prompts` (list/get), `tools`, `close` |
+| `createToolCatalog({ entries, load?, execute?, scopes?, session? })`                        | Catalog over any entry source; `scopes` intersect and use exact tool IDs                                                                                                                     |
+| `createGatewayServer`, `startGatewayHttp`, `metaTools`, `handleMetaTool`, `parseSelection`  | Embed the MCP gateway or its five meta-tools in another MCP server                                                                                                                           |
+| `listOperations`, `describeOperation`, `grepOperations`, `executeOperation`, `loadSpec`     | Pure building blocks used by the CLI commands                                                                                                                                                |
+| `listResources`, `readResource`, `listPrompts`, `getPrompt`, `resolveResourceUri`           | MCP resources and prompts building blocks behind `client.resources` / `client.prompts` and `spec resources` / `spec prompts`                                                                 |
+| `createMcpSession({ interactiveAuth? })`                                                    | Scope MCP connections: `run(fn)` tracks clients opened inside `fn`, `close()` closes only those                                                                                              |
+| `memoryRegistryStore`, `fileRegistryStore`                                                  | Registry backends; any `{ read, write }` object works                                                                                                                                        |
+| `setSpecHome`, `setCacheDir`, `setUsageDir`, `setTokenDir`, `setPolicyDir`, `setResultsDir` | Redirect storage per process (defaults to `~/.spec-cli`)                                                                                                                                     |
+| `setProjectDir(dir \| null)`                                                                | Where project config (`.spec-cli/config.json`) is read from; defaults to `cwd`, `null` disables it                                                                                           |
 
 Options accept `loadSpec` and `execute` overrides for tests or custom transports. Inline sources (`{ type: "openapi", source }`, `{ type: "stdio", command, args }`, …) can be passed anywhere a registered name is accepted by `operations.*`.
 
@@ -247,6 +253,23 @@ spec types --spec petstore                     # List all schema names
 spec types --spec petstore Pet                 # Inspect one schema
 spec types --spec hashnode PublishPostInput    # GraphQL input type
 ```
+
+### MCP resources and prompts
+
+MCP servers that advertise the `resources` or `prompts` capability expose them alongside their tools. Same shape as `types`: no argument lists, one argument reads or gets.
+
+```bash
+spec resources --spec docs                                # Resources + resource templates
+spec resources --spec docs readme                         # Read by name
+spec resources --spec docs file:///README.md              # Read by URI
+spec resources --spec docs page --var slug=intro          # Expand a resource template (by name or URI template)
+
+spec prompts --spec docs                                  # Prompts and their arguments
+spec prompts --spec docs summarize --var topic=billing    # Rendered prompt messages
+spec prompts --spec docs summarize --data '{"topic":"billing"}'
+```
+
+Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply: the resolved resource URI or the prompt name is matched as the tool (`spec policy add --tool "file:///etc/*"`). Reads share the call cache with tool calls.
 
 ---
 

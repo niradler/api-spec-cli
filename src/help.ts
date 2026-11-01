@@ -14,6 +14,8 @@ COMMANDS:
   show <op>          Operation/tool details
   call <op>          Call an operation or MCP tool
   types [type]       Schema/type names (OpenAPI/GraphQL)
+  resources [uri]    List MCP resources, or read one
+  prompts [name]     List MCP prompts, or get one
   add <name>         Register a spec (auth, headers, OAuth)
   specs              Registered specs
   refresh <name>     Re-fetch a spec (cache is 30m)
@@ -62,6 +64,23 @@ Run spec show first for the inputs. Policies may block calls (spec policy).
 ${SOURCE}`,
   types: `spec types --spec <name> [TypeName]
 List schema/type names, or inspect one (OpenAPI/GraphQL).
+${SOURCE}`,
+  resources: `spec resources --spec <name> [resource] [--var k=v]
+Without a resource: list MCP resources and resource templates.
+With one: read it. <resource> is a URI, a resource or template name, or a URI template.
+  spec resources --spec docs                               List
+  spec resources --spec docs readme                        Read by name
+  spec resources --spec docs file:///README.md             Read by URI
+  spec resources --spec docs repo-file --var path=src/a.ts Expand a template
+Policies match the resolved URI as the tool name. Alias: spec resource.
+${SOURCE}`,
+  prompts: `spec prompts --spec <name> [prompt] [--var k=v] [--data '<json>']
+Without a prompt: list MCP prompts and their arguments.
+With one: get the rendered prompt messages.
+  spec prompts --spec docs                                 List
+  spec prompts --spec docs summarize --var topic=billing   Get with arguments
+  spec prompts --spec docs summarize --data '{"topic":"billing"}'
+Missing required arguments are reported before calling the server. Alias: spec prompt.
 ${SOURCE}`,
   add: `spec add <name> --openapi <url-or-file> | --graphql <url> | --mcp-http <url> | --mcp-sse <url> | --mcp-stdio "<cmd>"
   --description <text>  --base-url <url>  --auth <token>  --header k=v
@@ -114,6 +133,8 @@ Disable a spec without removing it (excluded from search and the gateway).`,
 };
 
 COMMAND_HELP.grep = COMMAND_HELP.search!;
+COMMAND_HELP.resource = COMMAND_HELP.resources!;
+COMMAND_HELP.prompt = COMMAND_HELP.prompts!;
 
 export function commandHelp(command: string | undefined): string {
   return (command && COMMAND_HELP[command]) || HELP;

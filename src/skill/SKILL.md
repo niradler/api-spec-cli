@@ -29,7 +29,7 @@ spec show --spec petstore getPetById
 spec call --spec petstore getPetById --var petId=1
 ```
 
-Without registering, replace `--spec <name>` with an inline source on `list`/`show`/`call`/`types`: `--openapi <url>`, `--mcp-http <url>`, …
+Without registering, replace `--spec <name>` with an inline source on `list`/`show`/`call`/`types`/`resources`/`prompts`: `--openapi <url>`, `--mcp-http <url>`, …
 
 ## Browse one spec
 
@@ -38,6 +38,10 @@ spec specs                                 # registered specs
 spec list --spec petstore                  # first 20 compact ids
 spec list --spec petstore --filter pet --tag pets --top 10
 spec types --spec petstore Pet             # one schema (OpenAPI/GraphQL)
+spec resources --spec docs                 # MCP resources + templates
+spec resources --spec docs page --var slug=intro   # read one (name, URI or template)
+spec prompts --spec docs                   # MCP prompts + arguments
+spec prompts --spec docs summarize --var topic=billing   # rendered messages
 ```
 
 Never dump a large catalog (`--limit 0`) when search or `--filter` will do. A spec that fails to load shows under `unavailable`; other specs are still searched.

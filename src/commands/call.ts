@@ -11,7 +11,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8").trim();
 }
 
-async function callData(flags: Flags): Promise<string | undefined> {
+export async function callData(flags: Flags): Promise<string | undefined> {
   let data = flagString(flags, "data");
   const file = flagString(flags, "data-file");
   if (file && !data) data = readFileSync(file, "utf-8").trim();

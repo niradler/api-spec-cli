@@ -146,6 +146,7 @@ export function metaCacheKey(resolved: ResolvedEntry): string {
   const config = (entry.config ?? {}) as Record<string, unknown>;
   const fingerprint = hash(
     {
+      format: 2,
       type: entry.type,
       url: entry.url,
       source: entry.source,
