@@ -29,6 +29,8 @@ import type {
   ToolFilter,
 } from "./types.ts";
 
+export type SpecSelection = string | string[];
+
 export interface ToolScope {
   specs?: string[];
   tools?: string[];
@@ -61,10 +63,10 @@ export interface ToolCatalogOptions {
 
 export interface ToolCatalog {
   specs(): NamedEntry[];
-  tools(spec?: string): Promise<CatalogTool[]>;
+  tools(spec?: SpecSelection): Promise<CatalogTool[]>;
   find(id: string): Promise<CatalogTool>;
   describe(tool: string | CatalogTool): Promise<ToolDescription>;
-  search(query: string, spec?: string): Promise<CatalogTool[]>;
+  search(query: string, spec?: SpecSelection): Promise<CatalogTool[]>;
   call(id: string, args?: JsonObject): Promise<CallToolResult>;
   close(): Promise<void>;
 }
@@ -176,12 +178,18 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
       );
   }
 
-  async function tools(spec?: string): Promise<CatalogTool[]> {
+  function selected(spec?: SpecSelection): NamedEntry[] {
     const permitted = specs();
-    if (spec && !permitted.some((entry) => entry.name === spec))
+    const names = typeof spec === "string" ? [spec] : spec || [];
+    if (names.length === 0) return permitted;
+    if (names.some((name) => !permitted.some((entry) => entry.name === name)))
       throw new Error("Unavailable spec");
+    return permitted.filter((entry) => names.includes(entry.name));
+  }
+
+  async function tools(spec?: SpecSelection): Promise<CatalogTool[]> {
     const found: CatalogTool[] = [];
-    for (const entry of permitted.filter((item) => !spec || item.name === spec)) {
+    for (const entry of selected(spec)) {
       const document = await load(entry);
       const filter = entryFilter(entry);
       for (const operation of operations(document)) {
@@ -238,11 +246,12 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return index;
   }
 
-  async function search(query: string, spec?: string): Promise<CatalogTool[]> {
+  async function search(query: string, spec?: SpecSelection): Promise<CatalogTool[]> {
     const found = await tools(spec);
     if (isGlob(query)) return found.filter((tool) => operationMatches(tool.operation, query));
     const byId = new Map(found.map((tool) => [tool.id, tool]));
-    return searchIndex(spec ?? "", found)
+    const scope = [...new Set(typeof spec === "string" ? [spec] : spec || [])].sort().join(",");
+    return searchIndex(scope, found)
       .search(query)
       .map((id) => byId.get(id)!);
   }

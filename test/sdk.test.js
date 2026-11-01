@@ -79,8 +79,7 @@ describe("createSpecClient operations", () => {
     expect(shown.path).toBe("/pets/{petId}");
 
     const found = await client.operations.search("pet by id");
-    expect(found.results[0].spec).toBe("pets");
-    expect(found.results[0].matches[0].id).toBe("getPet");
+    expect(found.results[0]).toMatchObject({ rank: 1, spec: "pets", id: "getPet" });
     expect((await client.tools.search("pet by id"))[0].id).toBe("pets.getPet");
 
     const grep = await client.operations.grep("*pet*");

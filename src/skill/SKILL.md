@@ -47,6 +47,7 @@ spec show --spec datadog <tool>      # one tool's schema
 ```bash
 spec search "delete a pet"       # ranked match across every enabled spec
 spec search "get*"               # glob
+spec search delete --spec a,b    # only these specs; results are ranked hits (rank, spec, id)
 spec list --spec petstore        # first 20 compact IDs
 spec list --spec petstore --filter pet --limit 10
 spec list --spec petstore --top 10   # the 10 most-called operations first

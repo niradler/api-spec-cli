@@ -1,4 +1,9 @@
-import { createToolCatalog, type ToolCatalog, type ToolScope } from "./catalog.ts";
+import {
+  createToolCatalog,
+  type SpecSelection,
+  type ToolCatalog,
+  type ToolScope,
+} from "./catalog.ts";
 import { removeCachedSpec } from "./cache.ts";
 import { executeOperation, type CallRequest, type CallResult } from "./execute.ts";
 import { createMcpSession } from "./mcp-client.ts";
@@ -73,21 +78,17 @@ export interface RefreshResult {
   count: number;
 }
 
-export interface GrepOptions extends PageOptions {
-  spec?: string;
+export interface SearchOptions extends PageOptions {
+  spec?: SpecSelection;
 }
 
-export interface GrepGroup {
-  spec: string;
-  type: SpecType;
-  matches: GrepMatch[];
-}
+export type SearchHit = GrepMatch & { rank: number; spec: string; type: SpecType };
 
-export interface GrepResult {
-  pattern: string;
+export interface SearchResult {
+  query: string;
   total: number;
   showing: number;
-  results: GrepGroup[];
+  results: SearchHit[];
   offset?: number;
   limit?: number;
 }
@@ -112,8 +113,8 @@ export interface SpecClient {
     show(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
     types(ref: SpecRef): Promise<SpecTypes>;
     type(ref: SpecRef, target: string): Promise<Record<string, unknown>>;
-    search(query: string, options?: GrepOptions): Promise<GrepResult>;
-    grep(query: string, options?: GrepOptions): Promise<GrepResult>;
+    search(query: string, options?: SearchOptions): Promise<SearchResult>;
+    grep(query: string, options?: SearchOptions): Promise<SearchResult>;
     call(ref: SpecRef, target: string, request?: CallRequest): Promise<CallResult>;
   };
   tools: ToolCatalog;
@@ -135,53 +136,6 @@ function requireRemoteMcp(entry: NamedEntry) {
       `'${entry.name}' is not an HTTP/SSE MCP spec — OAuth only applies to mcp http and sse entries`
     );
   return entry;
-}
-
-interface GrepRow {
-  spec: string;
-  type: SpecType;
-  match: GrepMatch;
-}
-
-export function paginateGrep(
-  pattern: string,
-  groups: GrepGroup[],
-  options: PageOptions = {}
-): GrepResult {
-  return paginateRows(
-    pattern,
-    groups.flatMap((group) =>
-      group.matches.map((match) => ({ spec: group.spec, type: group.type, match }))
-    ),
-    options
-  );
-}
-
-function paginateRows(
-  pattern: string,
-  flat: GrepRow[],
-  { offset = 0, limit = 0 }: PageOptions = {}
-): GrepResult {
-  let page = flat;
-  if (offset > 0) page = page.slice(offset);
-  if (limit > 0) page = page.slice(0, limit);
-
-  const results: GrepGroup[] = [];
-  const index = new Map<string, GrepGroup>();
-  for (const row of page) {
-    let group = index.get(row.spec);
-    if (!group) {
-      group = { spec: row.spec, type: row.type, matches: [] };
-      index.set(row.spec, group);
-      results.push(group);
-    }
-    group.matches.push(row.match);
-  }
-
-  const result: GrepResult = { pattern, total: flat.length, showing: page.length, results };
-  if (offset > 0) result.offset = offset;
-  if (limit > 0 && page.length < flat.length) result.limit = limit;
-  return result;
 }
 
 export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
@@ -283,22 +237,29 @@ export function createSpecClient(options: SpecClientOptions = {}): SpecClient {
     session,
   });
 
-  async function search(query: string, searchOptions: GrepOptions = {}): Promise<GrepResult> {
-    if (searchOptions.spec) {
-      const entry = getEntry(searchOptions.spec, store.read());
+  async function search(
+    query: string,
+    { spec, offset = 0, limit = 0 }: SearchOptions = {}
+  ): Promise<SearchResult> {
+    const names = typeof spec === "string" ? [spec] : spec || [];
+    for (const name of names) {
+      const entry = getEntry(name, store.read());
       if (!entry.enabled) throw new Error(`Spec '${entry.name}' is disabled. Enable it first.`);
-    } else if (!allEntries(store.read()).some((entry) => entry.enabled))
+    }
+    if (!allEntries(store.read()).some((entry) => entry.enabled))
       throw new Error("No registered specs. Run 'spec add' first.");
-    const found = await tools.search(query, searchOptions.spec);
-    return paginateRows(
-      query,
-      found.map((tool) => ({
-        spec: tool.spec,
-        type: tool.document.type,
-        match: grepMatch(tool.operation),
-      })),
-      searchOptions
-    );
+    const found = await tools.search(query, names);
+    const end = limit > 0 ? offset + limit : undefined;
+    const results = found.slice(offset, end).map((tool, position) => ({
+      rank: offset + position + 1,
+      spec: tool.spec,
+      type: tool.document.type,
+      ...grepMatch(tool.operation),
+    }));
+    const result: SearchResult = { query, total: found.length, showing: results.length, results };
+    if (offset > 0) result.offset = offset;
+    if (limit > 0 && results.length < found.length) result.limit = limit;
+    return result;
   }
 
   const operations: SpecClient["operations"] = {

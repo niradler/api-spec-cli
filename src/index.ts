@@ -1,6 +1,6 @@
 export { VERSION } from "./version.ts";
 
-export { createSpecClient, paginateGrep } from "./client.ts";
+export { createSpecClient } from "./client.ts";
 export type {
   SpecClient,
   SpecClientOptions,
@@ -9,9 +9,9 @@ export type {
   SpecListOptions,
   AddResult,
   RefreshResult,
-  GrepOptions,
-  GrepGroup,
-  GrepResult,
+  SearchOptions,
+  SearchHit,
+  SearchResult,
 } from "./client.ts";
 
 export { createToolCatalog, validateArguments, textResult, errorResult } from "./catalog.ts";
@@ -19,6 +19,7 @@ export type {
   ToolCatalog,
   ToolCatalogOptions,
   ToolScope,
+  SpecSelection,
   CatalogTool,
   ToolDescription,
 } from "./catalog.ts";

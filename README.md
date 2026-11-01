@@ -85,7 +85,8 @@ client.specs.add("petstore", {
 client.specs.add("github", { type: "http", url: "https://api.githubcopilot.com/mcp/" });
 
 await client.operations.list("petstore");
-await client.operations.search("create an issue", { limit: 10 }); // ranked, grouped by spec
+await client.operations.search("create an issue", { spec: ["github", "petstore"], limit: 10 });
+// { query, total, showing, limit, results: [{ rank: 1, spec: "github", type, id, method, path }, ...] }
 await client.operations.call("petstore", "getPetById", { vars: { petId: "1" } });
 
 await client.close();
@@ -98,11 +99,12 @@ const { tools } = createSpecClient({ scopes: [{ specs: ["github", "petstore"] }]
 
 tools.specs(); // permitted registry entries
 await tools.search("pet by id"); // ranked: [{ id: "petstore.getPetById", ... }, ...]
+await tools.search("pet by id", "petstore"); // one spec, or an array for a set
 await tools.describe("petstore.getPetById"); // { id, spec, description, inputSchema }
 await tools.call("petstore.getPetById", { path: { petId: 1 } });
 ```
 
-Search has one implementation used everywhere — `tools.search`, `client.operations.search` (same results, paginated and grouped by spec), the gateway `search_tools` meta-tool and `spec search`. It only returns tools the catalog permits (enabled specs, allow/disable filters, scopes). A query containing `*` or `?` is a glob match on IDs, paths and descriptions instead of a ranked search.
+Search has one implementation used everywhere — `tools.search`, `client.operations.search` (same results as flat `rank`-numbered hits with `offset`/`limit` paging), the gateway `search_tools` meta-tool and `spec search`. It only returns tools the catalog permits (enabled specs, allow/disable filters, scopes). Every entry point searches all permitted specs, one spec, or a set (`spec: "a"` / `["a", "b"]`; gateway `spec` / `specs`; CLI `--spec a,b`). A query containing `*` or `?` is a glob match on IDs, paths and descriptions instead of a ranked search.
 
 `search` is full-text (BM25 via [MiniSearch](https://github.com/lucaong/minisearch)) over tool name, path, summary, description and tags. Names are split on camelCase and punctuation; stop words, plurals and common API verbs (remove → delete, fetch → get, sign in → login, repository → repo, pull request → pull) are normalized; prefix and typo matching are on. The index is built per catalog scope and reused until the permitted tool set changes. Queries are capped at 256 characters.
 
@@ -172,7 +174,7 @@ Inline specs use the same file cache (keyed from URL/command), so `listTools` is
 
 ### Search across specs
 
-`search` ranks operations/tools across all enabled specs (full-text over names, paths, summaries, descriptions and tags; see [SDK](#sdk) for how terms are normalized). Results are grouped by spec, best match first.
+`search` ranks operations/tools across all enabled specs (full-text over names, paths, summaries, descriptions and tags; see [SDK](#sdk) for how terms are normalized). Results are one flat list, best match first, each with its `rank`; ranking is across all searched specs. `--limit` (default 20, `0` = all) and `--offset` page that list.
 
 ```bash
 spec search pet by id                   # Ranked: getPetById first
@@ -180,6 +182,8 @@ spec search "remove a collaborator"     # Synonyms: remove → delete
 spec search "get*"                      # Glob: IDs, paths or descriptions starting with "get"
 spec search "*list*"                    # Glob: anything containing "list"
 spec search docs --spec agno            # Limit to one spec
+spec search delete --spec github,petstore  # Limit to a set of specs
+spec search delete --limit 10 --offset 10  # Ranks 11-20
 ```
 
 Case-insensitive. Plain text = ranked search, `*`/`?` = glob. Disabled specs and disabled tools are excluded. `spec grep` is kept as an alias.

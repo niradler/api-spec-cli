@@ -58,8 +58,16 @@ export const metaTools: Tool[] = [
   {
     name: "search_tools",
     description:
-      "Ranked full-text search over permitted tools (names, paths, descriptions, tags), optionally within a spec. Use * or ? for a glob match.",
-    inputSchema: object({ query: text, spec: text, ...pagination }, ["query"]),
+      "Ranked full-text search over permitted tools (names, paths, descriptions, tags), best match first. Narrow with spec or specs; use * or ? for a glob match.",
+    inputSchema: object(
+      {
+        query: text,
+        spec: text,
+        specs: { type: "array", items: text, minItems: 1, maxItems: 100, uniqueItems: true },
+        ...pagination,
+      },
+      ["query"]
+    ),
   },
   {
     name: "get_tool",
@@ -131,7 +139,10 @@ export async function handleMetaTool(
   const spec = args.spec as string | undefined;
   const tools =
     name === "search_tools"
-      ? await catalog.search(String(args.query), spec)
+      ? await catalog.search(String(args.query), [
+          ...(spec ? [spec] : []),
+          ...((args.specs as string[] | undefined) ?? []),
+        ])
       : await catalog.tools(spec);
   return textResult(
     page(

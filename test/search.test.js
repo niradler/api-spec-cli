@@ -161,6 +161,9 @@ describe("tool search ranking", () => {
     expect(all[0]).toBe("petstore.deletePet");
     expect((await ids(tools, "merge pull request", "github"))[0]).toBe("github.pulls/merge");
     expect((await ids(tools, "merge pull request", "petstore")).length).toBe(0);
+    expect((await ids(tools, "delete", ["petstore", "github"])).length).toBeGreaterThan(1);
+    expect((await ids(tools, "merge pull request", ["github"]))[0]).toBe("github.pulls/merge");
+    await expect(tools.search("pet", ["petstore", "missing"])).rejects.toThrow("Unavailable spec");
   });
 
   test("glob queries filter ids, paths and summaries instead of ranking", async () => {

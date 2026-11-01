@@ -173,6 +173,15 @@ test("should advertise only five meta-tools and paginate compact discovery", asy
   assert.equal(tools.items[0].inputSchema, undefined);
   const search = data(await c.callTool({ name: "search_tools", arguments: { query: "echo" } }));
   assert.equal(search.items[0].id, "upstream.echo");
+  const scoped = data(
+    await c.callTool({ name: "search_tools", arguments: { query: "echo", specs: ["upstream"] } })
+  );
+  assert.equal(scoped.items[0].id, "upstream.echo");
+  assert.equal(
+    (await c.callTool({ name: "search_tools", arguments: { query: "echo", specs: ["missing"] } }))
+      .isError,
+    true
+  );
 });
 test("should intersect URL filters with server exposure and registry deny rules", async () => {
   const c = await client(

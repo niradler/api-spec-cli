@@ -67,6 +67,7 @@ DISCOVER:
   spec list --mcp-http <url>           Inline: no registration needed
   spec search <query>                  Ranked search across all registered specs (first 20)
   spec search <query> --spec <name>    Search within one spec
+  spec search <query> --spec a,b       Search within a set of specs
   spec search "get*"                   Glob match on IDs, paths and descriptions
   spec search <query> --limit 10       Page matches (default 20; 0 = all)
   spec usage                           Show recorded usage for all specs
@@ -252,7 +253,7 @@ const commands = (rest: string[]): CommandModule[] => [
     builder: (y: Argv) =>
       y
         .positional("query", { type: "string", describe: "Search text or glob pattern" })
-        .option("spec", specSourceOptions.spec)
+        .option("spec", { type: "string", describe: "Spec name or comma-separated set" })
         .option("limit", { type: "string", describe: "Max matches (default 20; 0 = all)" })
         .option("offset", { type: "string", describe: "Skip the first N matches" }),
     handler: () => searchCmd(rest),

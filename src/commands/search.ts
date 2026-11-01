@@ -13,7 +13,10 @@ export async function searchCmd(args: string[]): Promise<void> {
     );
   out(
     await createSpecClient({ interactiveAuth: true }).operations.search(query, {
-      spec: flagString(flags, "spec"),
+      spec: flagString(flags, "spec")
+        ?.split(",")
+        .map((name) => name.trim())
+        .filter(Boolean),
       offset: parseOffset(flags),
       limit: parseLimit(flags),
     })

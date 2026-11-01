@@ -87,50 +87,53 @@ beforeEach(() => {
   };
 });
 
+function hits(spec) {
+  return captured.results.filter((hit) => hit.spec === spec).map((hit) => hit.id);
+}
+
 describe("search - ranked text", () => {
-  test("matches MCP tool by name substring", async () => {
+  test("matches MCP tool by name", async () => {
     await searchCmd(["search"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult).toBeDefined();
-    expect(mcpResult.matches).toHaveLength(1);
-    expect(mcpResult.matches[0].id).toBe("search_docs");
+    expect(hits("mymcp")).toEqual(["search_docs"]);
   });
 
-  test("matches MCP tool by description substring", async () => {
+  test("matches MCP tool by description", async () => {
     await searchCmd(["page"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult.matches.map((m) => m.id)).toContain("get_page");
+    expect(hits("mymcp")).toContain("get_page");
   });
 
   test("matches OpenAPI operation by id", async () => {
     await searchCmd(["createPet"]);
-    const apiResult = captured.results.find((r) => r.spec === "myapi");
-    expect(apiResult.matches[0].id).toBe("createPet");
+    expect(captured.results[0]).toMatchObject({ rank: 1, spec: "myapi", id: "createPet" });
   });
 
   test("matches OpenAPI operation by path", async () => {
     await searchCmd(["petId"]);
-    const apiResult = captured.results.find((r) => r.spec === "myapi");
-    expect(apiResult.matches[0].id).toBe("getPet");
+    expect(hits("myapi")[0]).toBe("getPet");
   });
 
   test("matches GraphQL operation by name", async () => {
     await searchCmd(["create"]);
-    const gqlResult = captured.results.find((r) => r.spec === "mygql");
-    expect(gqlResult.matches[0].id).toBe("createPost");
+    expect(hits("mygql")).toEqual(["createPost"]);
   });
 
   test("case insensitive", async () => {
     await searchCmd(["SEARCH"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult.matches[0].id).toBe("search_docs");
+    expect(captured.results[0].id).toBe("search_docs");
   });
 
   test("joins words into one ranked query", async () => {
     await searchCmd(["create", "a", "pet"]);
-    expect(captured.pattern).toBe("create a pet");
-    expect(captured.results[0].spec).toBe("myapi");
-    expect(captured.results[0].matches[0].id).toBe("createPet");
+    expect(captured.query).toBe("create a pet");
+    expect(captured.results[0]).toMatchObject({ rank: 1, spec: "myapi", id: "createPet" });
+  });
+
+  test("ranks across specs in one flat list", async () => {
+    await searchCmd(["create"]);
+    expect(captured.results.map((hit) => hit.rank)).toEqual(
+      captured.results.map((_, index) => index + 1)
+    );
+    expect(new Set(captured.results.map((hit) => hit.spec))).toEqual(new Set(["myapi", "mygql"]));
   });
 
   test("total counts all matches across specs", async () => {
@@ -142,14 +145,12 @@ describe("search - ranked text", () => {
 describe("search - glob patterns", () => {
   test("* glob matches multiple tools", async () => {
     await searchCmd(["*_docs"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult.matches[0].id).toBe("search_docs");
+    expect(hits("mymcp")).toEqual(["search_docs"]);
   });
 
   test("* prefix glob", async () => {
     await searchCmd(["get*"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult.matches.map((m) => m.id)).toContain("get_page");
+    expect(hits("mymcp")).toContain("get_page");
   });
 
   test("glob with many stars stays fast", async () => {
@@ -168,16 +169,25 @@ describe("search - glob patterns", () => {
 
 describe("search - --spec filter", () => {
   test("narrows to one spec", async () => {
-    await searchCmd(["search", "--spec", "mymcp"]);
-    expect(captured.results).toHaveLength(1);
-    expect(captured.results[0].spec).toBe("mymcp");
+    await searchCmd(["*e*", "--spec", "mymcp"]);
+    expect(new Set(captured.results.map((hit) => hit.spec))).toEqual(new Set(["mymcp"]));
+  });
+
+  test("narrows to a set of specs", async () => {
+    await searchCmd(["create", "--spec", "myapi, mygql"]);
+    expect(new Set(captured.results.map((hit) => hit.spec))).toEqual(new Set(["myapi", "mygql"]));
+    await searchCmd(["*e*", "--spec", "mymcp,mygql"]);
+    expect(hits("myapi")).toEqual([]);
+  });
+
+  test("rejects an unknown spec in the set", async () => {
+    await expect(searchCmd(["create", "--spec", "myapi,nope"])).rejects.toThrow("nope");
   });
 
   test("skips disabled specs when searching all", async () => {
-    registryEntries.mcp.mymcp.enabled = false; // disable mymcp
+    registryEntries.mcp.mymcp.enabled = false;
     await searchCmd(["search"]);
-    const mcpResult = captured.results.find((r) => r.spec === "mymcp");
-    expect(mcpResult).toBeUndefined();
+    expect(hits("mymcp")).toEqual([]);
   });
 
   test("rejects a disabled spec", async () => {
@@ -185,14 +195,21 @@ describe("search - --spec filter", () => {
     await expect(searchCmd(["search", "--spec", "mymcp"])).rejects.toThrow("disabled");
   });
 
-  test("throws on missing pattern", async () => {
+  test("throws on missing query", async () => {
     await expect(searchCmd([])).rejects.toThrow("Usage");
   });
 
-  test("--limit pages matches", async () => {
+  test("--limit and --offset page the ranked list", async () => {
+    await searchCmd(["*e*"]);
+    const all = captured.results.map((hit) => hit.id);
     await searchCmd(["*e*", "--limit", "2"]);
-    expect(captured.total).toBeGreaterThan(2);
+    expect(captured.total).toBe(all.length);
     expect(captured.showing).toBe(2);
     expect(captured.limit).toBe(2);
+    expect(captured.results.map((hit) => hit.id)).toEqual(all.slice(0, 2));
+    await searchCmd(["*e*", "--limit", "2", "--offset", "2"]);
+    expect(captured.offset).toBe(2);
+    expect(captured.results.map((hit) => hit.rank)).toEqual([3, 4]);
+    expect(captured.results.map((hit) => hit.id)).toEqual(all.slice(2, 4));
   });
 });
