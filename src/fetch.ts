@@ -6,6 +6,7 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { applyToolFilter } from "./glob.ts";
 import { flattenType } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
+import { promptPolicyTarget, resourcePolicyTarget } from "./mcp-features.ts";
 import { specRequestHeaders } from "./secrets.ts";
 import type {
   GraphqlOperation,
@@ -140,6 +141,14 @@ async function unlessUnsupported<T>(list: () => Promise<T[]>): Promise<T[] | und
   }
 }
 
+async function optionalFeature<T>(load: () => Promise<T>): Promise<{ value?: T; error?: string }> {
+  try {
+    return { value: await load() };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function loadMcpResources(client: Client) {
   const resources = await unlessUnsupported(() =>
     listAll("resource", async (params) => {
@@ -195,22 +204,40 @@ async function loadMcpPrompts(client: Client): Promise<McpPrompt[] | undefined> 
 async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Promise<McpSpec> {
   const client = await createMcpClient(entry);
   try {
-    const tools = await listAll("tool", async (params) => {
-      const page = await client.listTools(params);
-      return {
-        nextCursor: page.nextCursor,
-        items: page.tools.map((t): McpTool => ({
-          name: t.name,
-          description: t.description || null,
-          inputSchema: (t.inputSchema as McpTool["inputSchema"]) || null,
-        })),
-      };
-    });
+    const tools =
+      (await unlessUnsupported(() =>
+        listAll("tool", async (params) => {
+          const page = await client.listTools(params);
+          return {
+            nextCursor: page.nextCursor,
+            items: page.tools.map((t): McpTool => ({
+              name: t.name,
+              description: t.description || null,
+              inputSchema: (t.inputSchema as McpTool["inputSchema"]) || null,
+            })),
+          };
+        })
+      )) ?? [];
     const capabilities = client.getServerCapabilities() ?? {};
-    const { resources, resourceTemplates } = capabilities.resources
-      ? await loadMcpResources(client)
+    const resourceLoad = capabilities.resources
+      ? await optionalFeature(() => loadMcpResources(client))
       : {};
-    const prompts = capabilities.prompts ? await loadMcpPrompts(client) : undefined;
+    const promptLoad = capabilities.prompts
+      ? await optionalFeature(() => loadMcpPrompts(client))
+      : {};
+    const allowed = (id: string) =>
+      applyToolFilter([id], (x) => x, entry.allowedTools, entry.disabledTools).length > 0;
+    const resources = resourceLoad.value?.resources?.filter((r) =>
+      allowed(resourcePolicyTarget(r.uri))
+    );
+    const resourceTemplates = resourceLoad.value?.resourceTemplates?.filter((t) =>
+      allowed(resourcePolicyTarget(t.uriTemplate))
+    );
+    const prompts = promptLoad.value?.filter((p) => allowed(promptPolicyTarget(p.name)));
+    const featureErrors = {
+      ...(resourceLoad.error ? { resources: resourceLoad.error } : {}),
+      ...(promptLoad.error ? { prompts: promptLoad.error } : {}),
+    };
 
     return {
       type: "mcp",
@@ -224,6 +251,7 @@ async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Prom
       ...(resources ? { resources } : {}),
       ...(resourceTemplates ? { resourceTemplates } : {}),
       ...(prompts ? { prompts } : {}),
+      ...(Object.keys(featureErrors).length ? { featureErrors } : {}),
     };
   } finally {
     await client.close();

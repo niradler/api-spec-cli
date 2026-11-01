@@ -234,6 +234,7 @@ export interface McpSpec {
   resources?: McpResource[];
   resourceTemplates?: McpResourceTemplate[];
   prompts?: McpPrompt[];
+  featureErrors?: { resources?: string; prompts?: string };
 }
 
 export type SpecDocument = OpenApiSpec | GraphqlSpec | McpSpec;

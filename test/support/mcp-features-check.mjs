@@ -12,6 +12,7 @@ import {
 } from "../../src/index.ts";
 
 const featuresServer = resolve(import.meta.dirname, "mcp-features-server.mjs");
+const partialServer = resolve(import.meta.dirname, "mcp-partial-server.mjs");
 const echoServer = resolve(import.meta.dirname, "mcp-echo-server.mjs");
 const openapiFixture = resolve(import.meta.dirname, "../fixtures/openapi.json");
 const home = mkdtempSync(join(tmpdir(), "spec-cli-mcp-features-"));
@@ -25,6 +26,24 @@ const client = createSpecClient({ registry: memoryRegistryStore() });
 client.specs.add("docs", { type: "stdio", command: "node", args: [featuresServer] });
 client.specs.add("echo", { type: "stdio", command: "node", args: [echoServer] });
 client.specs.add("pets", { type: "openapi", source: openapiFixture });
+client.specs.add("broken", { type: "stdio", command: "node", args: [partialServer, "broken"] });
+client.specs.add("notes", {
+  type: "stdio",
+  command: "node",
+  args: [partialServer, "resources-only"],
+});
+client.specs.add("scoped", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  allowedTools: ["ping", "resource:docs://readme", "prompt:summarize"],
+});
+client.specs.add("hidden", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  disabledTools: ["resource:docs://pages/*"],
+});
 
 function withPolicy(rules) {
   writeFileSync(join(policyDir, "policy.json"), JSON.stringify({ rules }));
@@ -128,6 +147,44 @@ describe("SDK resources", () => {
   });
 });
 
+describe("tool filters and URI forms", () => {
+  test("allowedTools scopes resources, templates and prompts", async () => {
+    const listed = await client.resources.list("scoped");
+    assert.deepEqual(
+      listed.resources.map((r) => r.uri),
+      ["docs://readme"]
+    );
+    assert.deepEqual(listed.templates, []);
+    assert.equal((await client.prompts.list("scoped")).total, 1);
+    await assert.rejects(
+      client.resources.read("scoped", "docs://pages/intro"),
+      /excluded by the spec's tool filter/
+    );
+  });
+
+  test("disabledTools blocks reads in any URI form", async () => {
+    assert.deepEqual((await client.resources.list("hidden")).templates, []);
+    for (const uri of ["docs://pages/a", "docs://pages/x/../a", "docs://%70ages/a"]) {
+      await assert.rejects(client.resources.read("hidden", uri), /excluded/, uri);
+    }
+  });
+
+  test("policy rules see normalized and decoded URIs", async () => {
+    withPolicy([{ id: "no-secret", tool: "resource:docs://pages/secret*", message: "secret" }]);
+    try {
+      for (const uri of ["docs://pages/%73ecret", "docs://pages/x/../secret"]) {
+        await assert.rejects(client.resources.read("docs", uri), /secret/, uri);
+      }
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("filter matches values, not field names", async () => {
+    assert.equal((await client.resources.list("docs", { filter: "uri" })).total, 0);
+  });
+});
+
 describe("SDK prompts", () => {
   test("lists prompts with arguments", async () => {
     assert.deepEqual(await client.prompts.list("docs"), {
@@ -194,6 +251,24 @@ describe("unsupported specs", () => {
       message: "Resources are only available for MCP specs (spec type: openapi)",
     });
     await assert.rejects(client.prompts.list("pets"), /Prompts are only available for MCP specs/);
+  });
+
+  test("a failing resources listing does not break tools", async () => {
+    const result = await client.operations.call("broken", "ping");
+    assert.equal(result.content[0].text, "pong");
+    await assert.rejects(
+      client.resources.list("broken"),
+      /failed to list resources: .*backend down.*spec refresh/
+    );
+  });
+
+  test("servers without tools still expose resources", async () => {
+    assert.equal((await client.operations.list("notes")).total, 0);
+    assert.equal((await client.resources.list("notes")).resources[0].uri, "notes://today");
+    assert.equal(
+      (await client.resources.read("notes", "today")).contents[0].text,
+      "read:notes://today"
+    );
   });
 
   test("reports servers without the capability", async () => {

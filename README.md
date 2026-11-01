@@ -270,7 +270,7 @@ spec prompts --spec docs summarize --var topic=billing    # Rendered prompt mess
 spec prompts --spec docs summarize --data '{"topic":"billing"}'
 ```
 
-`spec list` on an MCP spec reports `resources` and `prompts` counts when the server advertises them, so agents know they exist. Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply with a kind prefix so tool rules don't catch them: resources match as `resource:<uri>` (`spec policy add --tool "resource:file:///etc/*"`) and prompts as `prompt:<name>`. Reads share the call cache with tool calls.
+`spec list` on an MCP spec reports `resources` and `prompts` counts when the server advertises them, so agents know they exist. Missing template variables and required prompt arguments are reported before the server is called. Policy rules apply with a kind prefix so tool rules don't catch them: resources match as `resource:<uri>` (`spec policy add --tool "resource:file:///etc/*"`) and prompts as `prompt:<name>`. The same names apply to `--allow-tool` / `--disable-tool`: an entry registered with `--allow-tool get_*` hides its resources and prompts unless you also allow, for example, `--allow-tool "resource:docs://*"`. Policy and tool-filter checks see the URI as given, normalized (dot segments, unreserved escapes) and percent-decoded, so an encoded or `..` variant can't slip past a rule. The server receives the URI unchanged. If listing resources or prompts fails, tools keep working and `spec resources` / `spec prompts` report the error. Reads share the call cache with tool calls.
 
 ---
 

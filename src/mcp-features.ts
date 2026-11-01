@@ -41,7 +41,13 @@ function page<T>(items: T[], options: FeatureListOptions): { page: FeaturePage; 
   const offset = options.offset ?? 0;
   const limit = options.limit ?? 0;
   const matched = filter
-    ? items.filter((item) => JSON.stringify(item).toLowerCase().includes(filter))
+    ? items.filter((item) =>
+        Object.values(item as object).some((value) =>
+          JSON.stringify(value ?? "")
+            .toLowerCase()
+            .includes(filter)
+        )
+      )
     : items;
   const sliced = matched.slice(offset, limit > 0 ? offset + limit : undefined);
   const result: FeaturePage = { total: matched.length, showing: sliced.length, offset };
@@ -49,16 +55,22 @@ function page<T>(items: T[], options: FeatureListOptions): { page: FeaturePage; 
   return { page: result, items: sliced };
 }
 
+function unavailable(mcp: McpSpec, feature: "resources" | "prompts"): string {
+  const error = mcp.featureErrors?.[feature];
+  return error
+    ? `MCP server '${mcp.title}' failed to list ${feature}: ${error}. Run 'spec refresh <name>' to retry.`
+    : `MCP server '${mcp.title}' does not expose ${feature}`;
+}
+
 function exposedResources(spec: SpecDocument): McpSpec {
   const mcp = requireMcpSpec(spec, "Resources");
-  if (!mcp.resources && !mcp.resourceTemplates)
-    throw new Error(`MCP server '${mcp.title}' does not expose resources`);
+  if (!mcp.resources && !mcp.resourceTemplates) throw new Error(unavailable(mcp, "resources"));
   return mcp;
 }
 
 function exposedPrompts(spec: SpecDocument): McpPrompt[] {
   const mcp = requireMcpSpec(spec, "Prompts");
-  if (!mcp.prompts) throw new Error(`MCP server '${mcp.title}' does not expose prompts`);
+  if (!mcp.prompts) throw new Error(unavailable(mcp, "prompts"));
   return mcp.prompts;
 }
 
@@ -92,6 +104,36 @@ export function featureCounts(spec: SpecDocument): { resources?: number; prompts
 
 export function resourcePolicyTarget(uri: string): string {
   return `resource:${uri}`;
+}
+
+const UNRESERVED = /[A-Za-z0-9\-._~]/;
+
+function decodeUnreserved(uri: string): string {
+  return uri.replace(/%([0-9a-f]{2})/gi, (escape, hex: string) => {
+    const char = String.fromCharCode(parseInt(hex, 16));
+    return UNRESERVED.test(char) ? char : escape.toUpperCase();
+  });
+}
+
+function canonicalUri(uri: string): string {
+  try {
+    return new URL(decodeUnreserved(uri)).href;
+  } catch {
+    return decodeUnreserved(uri);
+  }
+}
+
+function fullyDecoded(uri: string): string {
+  try {
+    return decodeURIComponent(uri);
+  } catch {
+    return uri;
+  }
+}
+
+export function resourcePolicyTargets(uri: string): string[] {
+  const canonical = canonicalUri(uri);
+  return [...new Set([uri, canonical, fullyDecoded(canonical)])].map(resourcePolicyTarget);
 }
 
 export function promptPolicyTarget(name: string): string {

@@ -12,9 +12,10 @@ import {
   promptPolicyTarget,
   requirePrompt,
   resolveResourceUri,
-  resourcePolicyTarget,
+  resourcePolicyTargets,
 } from "./mcp-features.ts";
 import { operationId, requireOperation } from "./operations.ts";
+import { applyToolFilter } from "./glob.ts";
 import { enforcePolicy } from "./policy.ts";
 import { resolveConfig, type ConfigOptions, type ResolvedConfig } from "./resolve.ts";
 import { recordUsage } from "./usage.ts";
@@ -243,7 +244,11 @@ export async function readResource(
   const ctx = callContext(entry, request);
   const uri = resolveResourceUri(spec, target, request.vars);
   const mcp = requireMcpEntry(entry);
-  enforcePolicy({ spec: ctx.specName, tool: resourcePolicyTarget(uri), args: { ...request.vars } });
+  for (const target of resourcePolicyTargets(uri)) {
+    if (!applyToolFilter([target], (id) => id, mcp.allowedTools, mcp.disabledTools).length)
+      throw new Error(`Resource not available: ${uri} is excluded by the spec's tool filter`);
+    enforcePolicy({ spec: ctx.specName, tool: target, args: { ...request.vars } });
+  }
 
   const keyParts = mcpKeyParts(mcp, ctx, "readResource", uri, null);
   const hit = cached<McpResourceResult>(keyParts, ctx, uri);
