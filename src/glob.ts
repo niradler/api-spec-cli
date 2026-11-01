@@ -35,15 +35,18 @@ export function matchFilter(pattern: string, str: string): boolean {
   return wildcardMatch(pattern, str);
 }
 
+export function filterAllows(ids: string[], allowed?: string[], disabled?: string[]): boolean {
+  const matches = (patterns: string[]) =>
+    ids.some((id) => patterns.some((pattern) => matchFilter(pattern, id)));
+  if (allowed?.length && !matches(allowed)) return false;
+  return !matches(disabled ?? []);
+}
+
 export function applyToolFilter<T>(
   items: T[],
   name: (item: T) => string,
   allowed?: string[],
   disabled?: string[]
 ): T[] {
-  return items.filter((item) => {
-    const id = name(item);
-    if (allowed?.length && !allowed.some((pattern) => matchFilter(pattern, id))) return false;
-    return !disabled?.some((pattern) => matchFilter(pattern, id));
-  });
+  return items.filter((item) => filterAllows([name(item)], allowed, disabled));
 }

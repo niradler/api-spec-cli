@@ -10,12 +10,13 @@ import { createMcpClient } from "./mcp-client.ts";
 import {
   promptArguments,
   promptPolicyTarget,
+  requireMcpSpec,
   requirePrompt,
   resolveResourceUri,
   resourcePolicyTargets,
 } from "./mcp-features.ts";
 import { operationId, requireOperation } from "./operations.ts";
-import { applyToolFilter } from "./glob.ts";
+import { filterAllows } from "./glob.ts";
 import { enforcePolicy } from "./policy.ts";
 import { resolveConfig, type ConfigOptions, type ResolvedConfig } from "./resolve.ts";
 import { recordUsage } from "./usage.ts";
@@ -244,11 +245,15 @@ export async function readResource(
   const ctx = callContext(entry, request);
   const uri = resolveResourceUri(spec, target, request.vars);
   const mcp = requireMcpEntry(entry);
-  for (const target of resourcePolicyTargets(uri)) {
-    if (!applyToolFilter([target], (id) => id, mcp.allowedTools, mcp.disabledTools).length)
-      throw new Error(`Resource not available: ${uri} is excluded by the spec's tool filter`);
+  const targets = resourcePolicyTargets(
+    uri,
+    requireMcpSpec(spec, "Resources").resourceTemplates,
+    mcp
+  );
+  if (!filterAllows(targets, mcp.allowedTools, mcp.disabledTools))
+    throw new Error(`Resource not available: ${uri} is excluded by the spec's tool filter`);
+  for (const target of targets)
     enforcePolicy({ spec: ctx.specName, tool: target, args: { ...request.vars } });
-  }
 
   const keyParts = mcpKeyParts(mcp, ctx, "readResource", uri, null);
   const hit = cached<McpResourceResult>(keyParts, ctx, uri);

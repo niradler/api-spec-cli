@@ -6,6 +6,7 @@ import type {
   McpSpec,
   SpecDocument,
   StringMap,
+  ToolFilter,
 } from "./types.ts";
 
 export interface FeatureListOptions {
@@ -117,7 +118,10 @@ function decodeUnreserved(uri: string): string {
 
 function canonicalUri(uri: string): string {
   try {
-    return new URL(decodeUnreserved(uri)).href;
+    const url = new URL(decodeUnreserved(uri));
+    url.hash = "";
+    if (!url.search) url.search = "";
+    return url.href;
   } catch {
     return decodeUnreserved(uri);
   }
@@ -131,9 +135,34 @@ function fullyDecoded(uri: string): string {
   }
 }
 
-export function resourcePolicyTargets(uri: string): string[] {
+function templateMatches(template: string, uri: string): boolean {
+  try {
+    return new UriTemplate(template).match(uri) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function filterTemplates({ allowedTools = [], disabledTools = [] }: ToolFilter): string[] {
+  const prefix = resourcePolicyTarget("");
+  return [...allowedTools, ...disabledTools]
+    .filter((pattern) => pattern.startsWith(prefix))
+    .map((pattern) => pattern.slice(prefix.length))
+    .filter((template) => UriTemplate.isTemplate(template));
+}
+
+export function resourcePolicyTargets(
+  uri: string,
+  templates: McpResourceTemplate[] = [],
+  filter: ToolFilter = {}
+): string[] {
   const canonical = canonicalUri(uri);
-  return [...new Set([uri, canonical, fullyDecoded(canonical)])].map(resourcePolicyTarget);
+  const forms = [...new Set([uri, canonical, fullyDecoded(canonical)])];
+  const candidates = [...templates.map((t) => t.uriTemplate), ...filterTemplates(filter)];
+  const matched = candidates.filter((template) =>
+    forms.some((form) => templateMatches(template, form))
+  );
+  return [...new Set([...forms, ...matched])].map(resourcePolicyTarget);
 }
 
 export function promptPolicyTarget(name: string): string {

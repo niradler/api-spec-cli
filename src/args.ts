@@ -67,8 +67,11 @@ export function flagString(flags: Flags, key: string): string | undefined {
 
 export function flagList(flags: Flags, key: string): string[] | undefined {
   const value = flags[key];
-  if (value === undefined || typeof value === "boolean") return undefined;
-  return Array.isArray(value) ? value : [value];
+  if (value === undefined || value === false) return undefined;
+  const values: unknown[] = Array.isArray(value) ? value : [value];
+  if (!values.every((v): v is string => typeof v === "string"))
+    throw new Error(`--${key} requires a value`);
+  return values;
 }
 
 export function flagBool(flags: Flags, key: string): boolean {

@@ -3,7 +3,6 @@ import type {
   GetPromptResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import {
   executeOperation,
@@ -16,7 +15,7 @@ import {
 } from "./execute.ts";
 import { operationQuery, operationSchema } from "./gateway-schema.ts";
 import { createMcpSession, type McpSession } from "./mcp-client.ts";
-import { isGlob, matchFilter } from "./glob.ts";
+import { filterAllows, isGlob } from "./glob.ts";
 import { matchesLabels, type LabelMatch } from "./labels.ts";
 import {
   operationId,
@@ -180,32 +179,9 @@ function scopeAllowsSpec(scope: ToolScope, entry: NamedEntry): boolean {
   return matchesLabels(entry, scope.labels, scope.labelMatch);
 }
 
-function scopeAllowsTool(scope: ToolScope, id: string): boolean {
-  if (scope.tools && !scope.tools.includes(id)) return false;
-  return !scope.disabledTools?.includes(id);
-}
-
-function scopeAllowsFeature(
-  scope: ToolScope,
-  spec: string,
-  grants: string[],
-  denials = grants
-): boolean {
-  const ids = (targets: string[]) => targets.map((target) => `${spec}.${target}`);
-  if (scope.tools && !ids(grants).some((id) => scope.tools!.includes(id))) return false;
-  return !ids(denials).some((id) => scope.disabledTools?.includes(id));
-}
-
-function templateTargets(document: McpSpec, uri: string): string[] {
-  return (document.resourceTemplates ?? [])
-    .filter((template) => {
-      try {
-        return new UriTemplate(template.uriTemplate).match(uri) !== null;
-      } catch {
-        return false;
-      }
-    })
-    .map((template) => resourcePolicyTarget(template.uriTemplate));
+function scopeAllows(scope: ToolScope, ids: string[]): boolean {
+  if (scope.tools && !ids.some((id) => scope.tools!.includes(id))) return false;
+  return !ids.some((id) => scope.disabledTools?.includes(id));
 }
 
 function relayMessages(spec: string, messages: GetPromptResult["messages"]) {
@@ -233,13 +209,13 @@ function entryFilter(entry: NamedEntry): ToolFilter {
   return entry._section === "mcp" ? entry : entry.config || {};
 }
 
-function entryAllows(filter: ToolFilter, id: string): boolean {
-  if (
-    filter.allowedTools?.length &&
-    !filter.allowedTools.some((pattern) => matchFilter(pattern, id))
-  )
-    return false;
-  return !filter.disabledTools?.some((pattern) => matchFilter(pattern, id));
+function resourceTargets(entry: NamedEntry, document: McpSpec, uri: string): string[] {
+  return resourcePolicyTargets(uri, document.resourceTemplates, entryFilter(entry));
+}
+
+function entryAllows(entry: NamedEntry, ids: string[]): boolean {
+  const filter = entryFilter(entry);
+  return filterAllows(ids, filter.allowedTools, filter.disabledTools);
 }
 
 function callRequest(
@@ -322,13 +298,11 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
         unavailable(entry.name, error);
         continue;
       }
-      const filter = entryFilter(entry);
       for (const operation of operations(document)) {
         if ("kind" in operation && operation.kind === "subscription") continue;
         const name = operationId(document, operation);
         const id = `${entry.name}.${name}`;
-        if (!entryAllows(filter, name)) continue;
-        if (!scopes.every((scope) => scopeAllowsTool(scope, id))) continue;
+        if (!visible(entry, [name])) continue;
         found.push({
           id,
           spec: entry.name,
@@ -429,11 +403,9 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     return found;
   }
 
-  function featureVisible(entry: NamedEntry, target: string): boolean {
-    return (
-      entryAllows(entryFilter(entry), target) &&
-      scopes.every((scope) => scopeAllowsFeature(scope, entry.name, [target]))
-    );
+  function visible(entry: NamedEntry, targets: string[]): boolean {
+    const ids = targets.map((target) => `${entry.name}.${target}`);
+    return entryAllows(entry, targets) && scopes.every((scope) => scopeAllows(scope, ids));
   }
 
   function mcpEntry(spec: string): NamedEntry | undefined {
@@ -447,7 +419,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const found: CatalogResource[] = [];
     for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
       for (const resource of document.resources ?? []) {
-        if (!featureVisible(entry, resourcePolicyTarget(resource.uri))) continue;
+        if (!visible(entry, resourceTargets(entry, document, resource.uri))) continue;
         found.push({
           ...resource,
           uri: formatResourceUri(entry.name, resource.uri),
@@ -465,7 +437,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const found: CatalogResourceTemplate[] = [];
     for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
       for (const template of document.resourceTemplates ?? []) {
-        if (!featureVisible(entry, resourcePolicyTarget(template.uriTemplate))) continue;
+        if (!visible(entry, [resourcePolicyTarget(template.uriTemplate)])) continue;
         found.push({
           ...template,
           uriTemplate: formatResourceUri(entry.name, template.uriTemplate),
@@ -481,12 +453,11 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const entry = parsed && mcpEntry(parsed.spec);
     if (!parsed || !entry) throw new Error("Unavailable resource");
     const document = await load(entry);
-    if (document.type !== "mcp" || resolveResourceUri(document, parsed.uri) !== parsed.uri)
-      throw new Error("Unavailable resource");
-    const templates = templateTargets(document, parsed.uri);
-    const grants = [resourcePolicyTarget(parsed.uri), ...templates];
-    const denials = [...resourcePolicyTargets(parsed.uri), ...templates];
-    if (!scopes.every((scope) => scopeAllowsFeature(scope, entry.name, grants, denials)))
+    if (
+      document.type !== "mcp" ||
+      resolveResourceUri(document, parsed.uri) !== parsed.uri ||
+      !visible(entry, resourceTargets(entry, document, parsed.uri))
+    )
       throw new Error("Unavailable resource");
     const result = await session.run(() => readResourceRequest(document, entry, parsed.uri));
     return {
@@ -504,7 +475,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const found: CatalogPrompt[] = [];
     for (const { entry, document } of await mcpDocuments(spec, options.unavailable)) {
       for (const prompt of document.prompts ?? []) {
-        if (!featureVisible(entry, promptPolicyTarget(prompt.name))) continue;
+        if (!visible(entry, [promptPolicyTarget(prompt.name)])) continue;
         found.push({
           ...prompt,
           name: formatPromptName(entry.name, prompt.name),
@@ -525,7 +496,7 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
     const document = await load(entry);
     const prompt =
       document.type === "mcp" ? document.prompts?.find((item) => item.name === parsed.name) : null;
-    if (!prompt || !featureVisible(entry, promptPolicyTarget(prompt.name)))
+    if (!prompt || !visible(entry, [promptPolicyTarget(prompt.name)]))
       throw new Error("Unavailable prompt");
     const result = await session.run(() =>
       getPromptRequest(document, entry, prompt.name, { data: args })

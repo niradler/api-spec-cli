@@ -51,6 +51,12 @@ client.specs.add("hidden", {
   args: [featuresServer],
   disabledTools: ["resource:docs://pages/*"],
 });
+client.specs.add("templated", {
+  type: "stdio",
+  command: "node",
+  args: [featuresServer],
+  disabledTools: ["resource:docs://pages/{slug}"],
+});
 
 function withPolicy(rules) {
   writeFileSync(join(policyDir, "policy.json"), JSON.stringify({ rules }));
@@ -182,6 +188,20 @@ describe("tool filters and URI forms", () => {
       for (const uri of ["docs://pages/%73ecret", "docs://pages/x/../secret"]) {
         await assert.rejects(client.resources.read("docs", uri), /secret/, uri);
       }
+    } finally {
+      clearPolicy();
+    }
+  });
+
+  test("filters and policies naming a template cover its expansions", async () => {
+    for (const uri of ["docs://pages/intro", "DOCS://pages/intro", "docs://pages/./intro"])
+      await assert.rejects(client.resources.read("templated", uri), /excluded/, uri);
+    assert.equal((await client.resources.read("templated", "readme")).uri, "docs://readme");
+    withPolicy([
+      { id: "no-pages", tool: "resource:docs://pages/{slug}", message: "pages blocked" },
+    ]);
+    try {
+      await assert.rejects(client.resources.read("docs", "DOCS://pages/intro"), /pages blocked/);
     } finally {
       clearPolicy();
     }
@@ -498,7 +518,14 @@ describe("Gateway relay", () => {
     await withGateway(
       "",
       async (mcp) => {
-        for (const uri of [...aliases, "spec://docs/docs://pages/secret"])
+        for (const uri of [
+          ...aliases,
+          "spec://docs/docs://pages/secret",
+          "spec://docs/DOCS://pages/intro",
+          "spec://docs/docs://pages/./intro",
+          "spec://docs/docs://readme?",
+          "spec://docs/docs://readme#x",
+        ])
           await assert.rejects(mcp.readResource({ uri }), /Resource unavailable/, uri);
         assert.deepEqual((await mcp.listResourceTemplates()).resourceTemplates, []);
       },

@@ -116,6 +116,9 @@ describe("flag parsing", () => {
     expect(
       sourceFromFlags(parseArgs(["--openapi", "u", "--label", "z", "--label", "a"]).flags).labels
     ).toEqual(["z", "a"]);
+    expect(() => sourceFromFlags(parseArgs(["--openapi", "u", "--label"]).flags)).toThrow(
+      "--label requires a value"
+    );
   });
 });
 
