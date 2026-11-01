@@ -95,6 +95,51 @@ function scopeAllowsTool(scope: ToolScope, id: string): boolean {
   return !scope.disabledTools?.includes(id);
 }
 
+export function tokenize(text: string): string[] {
+  return text
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z\d]+/)
+    .filter(Boolean);
+}
+
+function compact(text: string): string {
+  return text.toLowerCase().replace(/[^a-z\d]/g, "");
+}
+
+function searchFields(tool: CatalogTool): { tokens: string[]; weight: number }[] {
+  const operation = tool.operation;
+  const name = tool.id.slice(tool.spec.length + 1);
+  const summary = "summary" in operation ? operation.summary || "" : "";
+  const path = "path" in operation ? operation.path : "";
+  return [
+    { tokens: tokenize(name), weight: 4 },
+    { tokens: tokenize(path), weight: 2 },
+    { tokens: tokenize(`${summary} ${tool.description}`), weight: 1 },
+  ];
+}
+
+function termScore(term: string, fields: { tokens: string[]; weight: number }[]): number {
+  let best = 0;
+  for (const { tokens, weight } of fields) {
+    if (tokens.includes(term)) best = Math.max(best, weight);
+    else if (tokens.some((token) => token.startsWith(term))) best = Math.max(best, weight / 2);
+  }
+  return best;
+}
+
+export function searchScore(tool: CatalogTool, query: string, terms = tokenize(query)): number {
+  const fields = searchFields(tool);
+  const scores = terms.map((term) => termScore(term, fields));
+  const matched = scores.filter((score) => score > 0).length;
+  const phrase = compact(query);
+  const name = compact(tool.id.slice(tool.spec.length + 1));
+  const exact = name === phrase ? 8 : name.includes(phrase) ? 4 : 0;
+  if (matched === 0 && exact === 0) return 0;
+  return exact + scores.reduce((sum, score) => sum + score, 0) + (matched / terms.length) * 4;
+}
+
 function isObject(value: unknown): value is JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -219,10 +264,13 @@ export function createToolCatalog(options: ToolCatalogOptions): ToolCatalog {
   }
 
   async function search(query: string, spec?: string): Promise<CatalogTool[]> {
-    const needle = query.toLowerCase();
-    return (await tools(spec)).filter((tool) =>
-      `${tool.id} ${tool.description}`.toLowerCase().includes(needle)
-    );
+    const terms = tokenize(query);
+    if (terms.length === 0) return [];
+    return (await tools(spec))
+      .map((tool) => ({ tool, score: searchScore(tool, query, terms) }))
+      .filter((match) => match.score > 0)
+      .sort((a, b) => b.score - a.score || a.tool.id.localeCompare(b.tool.id))
+      .map((match) => match.tool);
   }
 
   async function call(id: string, args: JsonObject = {}): Promise<CallToolResult> {
