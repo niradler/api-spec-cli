@@ -48,6 +48,7 @@ describe("CLI resources and prompts", () => {
   test("lists and reads resources", () => {
     expect(run("resources").templates[0].name).toBe("page");
     expect(run("resource", "page", "--var", "slug=intro").contents[0].text).toBe("page:intro");
+    expect(run("resource", "--var", "slug=intro", "page").contents[0].text).toBe("page:intro");
   });
 
   test("filters and pages resource listings", () => {

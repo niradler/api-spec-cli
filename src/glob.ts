@@ -38,7 +38,8 @@ function isResourceTemplate(pattern: string): boolean {
 
 export function matchTemplate(pattern: string, str: string): boolean {
   if (!isResourceTemplate(pattern)) return false;
-  if (pattern.includes("*")) return wildcardMatch(pattern.replace(/\{[^}]*\}/g, "*"), str);
+  if (pattern.replace(/\{[^}]*\}/g, "").includes("*"))
+    return wildcardMatch(pattern.replace(/\{[^}]*\}/g, "*"), str);
   try {
     return new UriTemplate(pattern.toLowerCase()).match(str.toLowerCase()) !== null;
   } catch {

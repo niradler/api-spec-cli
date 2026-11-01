@@ -24,6 +24,8 @@ import { migrateLegacyHome } from "./paths.ts";
 import { commandHelp } from "./help.ts";
 import { VERSION } from "./version.ts";
 
+const repeatable = { type: "string", array: true, nargs: 1 } as const;
+
 const specSourceOptions = {
   spec: { type: "string", describe: "Use a registered spec" },
   openapi: { type: "string", describe: "Inline OpenAPI URL or file" },
@@ -37,10 +39,10 @@ const overrideOptions = {
   auth: { type: "string", describe: "Override auth token" },
   "auth-from": { type: "string", describe: "Use stored OAuth token from another spec" },
   "base-url": { type: "string", describe: "Override base URL" },
-  header: { type: "string", array: true, describe: "Header k=v (repeatable)" },
-  "allow-tool": { type: "string", array: true, describe: "Allow tool glob (repeatable)" },
-  "disable-tool": { type: "string", array: true, describe: "Disable tool glob (repeatable)" },
-  env: { type: "string", array: true, describe: "Env KEY=VAL (repeatable, stdio only)" },
+  header: { ...repeatable, describe: "Header k=v (repeatable)" },
+  "allow-tool": { ...repeatable, describe: "Allow tool glob (repeatable)" },
+  "disable-tool": { ...repeatable, describe: "Disable tool glob (repeatable)" },
+  env: { ...repeatable, describe: "Env KEY=VAL (repeatable, stdio only)" },
   cwd: { type: "string", describe: "Working directory (stdio only)" },
 } satisfies Record<string, Options>;
 
@@ -98,8 +100,8 @@ const commands = (rest: string[]): CommandModule[] => [
           ...sourceOptions,
           data: { type: "string", describe: "JSON body / MCP args, or - for stdin" },
           "data-file": { type: "string", describe: "Read JSON body from a file" },
-          var: { type: "string", array: true, describe: "Path/GraphQL var k=v (repeatable)" },
-          query: { type: "string", array: true, describe: "Query param k=v (repeatable)" },
+          var: { ...repeatable, describe: "Path/GraphQL var k=v (repeatable)" },
+          query: { ...repeatable, describe: "Query param k=v (repeatable)" },
           method: { type: "string", describe: "Override HTTP method" },
           "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
@@ -125,7 +127,7 @@ const commands = (rest: string[]): CommandModule[] => [
           filter: { type: "string", describe: "Substring search across fields" },
           limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
           offset: { type: "string", describe: "Skip the first N results" },
-          var: { type: "string", array: true, describe: "Template variable k=v (repeatable)" },
+          var: { ...repeatable, describe: "Template variable k=v (repeatable)" },
           "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
         }),
     handler: () => resourcesCmd(rest),
@@ -139,7 +141,7 @@ const commands = (rest: string[]): CommandModule[] => [
         filter: { type: "string", describe: "Substring search across fields" },
         limit: { type: "string", describe: "Max results (default 20; 0 = all)" },
         offset: { type: "string", describe: "Skip the first N results" },
-        var: { type: "string", array: true, describe: "Prompt argument k=v (repeatable)" },
+        var: { ...repeatable, describe: "Prompt argument k=v (repeatable)" },
         data: { type: "string", describe: "Prompt arguments as JSON, or - for stdin" },
         "data-file": { type: "string", describe: "Read prompt arguments from a file" },
         "policies-path": { type: "string", describe: "Folder of per-spec policy JSON files" },
@@ -268,7 +270,7 @@ const commands = (rest: string[]): CommandModule[] => [
         .option("tool", { type: "string", describe: "Tool or operation glob" })
         .option("spec", { type: "string", describe: "Limit rule to this spec name (glob)" })
         .option("message", { type: "string", describe: "Error message when blocked" })
-        .option("when", { type: "string", array: true, describe: "Arg matcher key.op=value" })
+        .option("when", { ...repeatable, describe: "Arg matcher key.op=value" })
         .option("local", { type: "boolean", describe: "Use project .spec-cli/policy.json" })
         .option("policies-path", {
           type: "string",

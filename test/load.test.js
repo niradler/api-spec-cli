@@ -95,6 +95,8 @@ describe("matchFilter", () => {
     expect(matchFilter("resource:docs://pages/{slug}", "resource:docs://pages/a/b")).toBe(false);
     expect(matchFilter("resource:docs://*/{id}", "resource:docs://pages/intro")).toBe(true);
     expect(matchFilter("resource:docs://*/{id}", "resource:other://pages/intro")).toBe(false);
+    expect(matchFilter("resource:docs://tags/{tags*}", "resource:docs://tags/a")).toBe(true);
+    expect(matchFilter("resource:docs://tags/{tags*}", "resource:docs://tags/a/b")).toBe(false);
   });
 });
 
