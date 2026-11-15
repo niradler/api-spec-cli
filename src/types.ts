@@ -196,6 +196,7 @@ export interface McpTool {
   name: string;
   description: string | null;
   inputSchema: JsonSchema | null;
+  readOnly?: boolean;
 }
 
 export interface McpResource {

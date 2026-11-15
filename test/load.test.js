@@ -13,6 +13,37 @@ mock.module("../src/mcp-client.ts", () => ({
 
 const { matchGlob, matchFilter } = await import("../src/glob.ts");
 
+describe("MCP tool catalog", () => {
+  test("should mark only tools that declare readOnlyHint as read-only", async () => {
+    mock.module("../src/mcp-client.ts", () => ({
+      ...realMcpClient,
+      createMcpClient: async () => ({
+        listTools: async () => ({
+          tools: [
+            { name: "task_get", annotations: { readOnlyHint: true } },
+            { name: "task_update", annotations: { readOnlyHint: false } },
+            { name: "task_list" },
+          ],
+        }),
+        getServerCapabilities: () => ({}),
+        close: async () => {},
+      }),
+    }));
+    const { fetchSpec } = await import(`../src/fetch.ts?catalog=${Date.now()}`);
+    const spec = await fetchSpec({
+      name: "inline-test",
+      _section: "mcp",
+      type: "http",
+      url: "https://mcp.test.com",
+    });
+    expect(spec.tools.map((tool) => [tool.name, tool.readOnly === true])).toEqual([
+      ["task_get", true],
+      ["task_update", false],
+      ["task_list", false],
+    ]);
+  });
+});
+
 // Simulate the filtering logic from applyFilter (uses matchFilter — exact or glob)
 function applyToolFilter(tools, allowedTools, disabledTools) {
   let result = [...tools];

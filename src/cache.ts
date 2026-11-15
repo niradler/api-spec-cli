@@ -233,13 +233,34 @@ export function setCallCache(
   });
 }
 
-export function removeCallCachesForSpec(specName: string): void {
+function writeMarker(specName: string | null): string {
+  return join(getCacheDir(), `write-${safeKey(specName || "inline")}`);
+}
+
+export function markSpecWrite(specName: string | null): void {
+  if (!enabled()) return;
+  try {
+    mkdirSync(getCacheDir(), { recursive: true });
+    writeFileSync(writeMarker(specName), String(Date.now()), { mode: 0o600 });
+    removeCallCachesForSpec(specName);
+  } catch {}
+}
+
+export function lastSpecWrite(specName: string | null): number {
+  try {
+    return Number(readFileSync(writeMarker(specName), "utf-8")) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function removeCallCachesForSpec(specName: string | null): void {
   const dir = getCacheDir();
-  if (!specName || !existsSync(dir)) return;
+  if (!existsSync(dir)) return;
   for (const name of readdirSync(dir)) {
     if (!name.startsWith("call-") || !name.endsWith(".json")) continue;
     const file = join(dir, name);
-    if (readRecord(file)?.spec === specName) remove(file);
+    if ((readRecord(file)?.spec ?? null) === (specName || null)) remove(file);
   }
 }
 

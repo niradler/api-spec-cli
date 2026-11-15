@@ -214,6 +214,7 @@ async function loadMcp(entry: Extract<ResolvedEntry, { _section: "mcp" }>): Prom
               name: t.name,
               description: t.description || null,
               inputSchema: (t.inputSchema as McpTool["inputSchema"]) || null,
+              ...(t.annotations?.readOnlyHint === true ? { readOnly: true } : {}),
             })),
           };
         })

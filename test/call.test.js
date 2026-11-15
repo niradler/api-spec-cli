@@ -82,12 +82,14 @@ mock.module("../src/resolve.ts", () => ({
 }));
 
 let mcpCallTool;
+let mcpCalls = 0;
 const realMcpClient = { ...(await import("../src/mcp-client.ts")) };
 mock.module("../src/mcp-client.ts", () => ({
   ...realMcpClient,
   createMcpClient: async () => ({
     callTool: async (args) => {
       mcpCallTool = args;
+      mcpCalls += 1;
       return { content: [{ type: "text", text: "ok" }], isError: false };
     },
     close: async () => {},
@@ -372,6 +374,141 @@ describe("call - GraphQL policy", () => {
 
     await expect(callOperation(["me"])).rejects.toThrow("blocked by policy: me is locked");
     expect(lastFetchUrl).toBeUndefined();
+  });
+});
+
+describe("call - cache only side-effect-free calls", () => {
+  function countFetches() {
+    const counter = { fetches: 0 };
+    globalThis.fetch = async () => {
+      counter.fetches += 1;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ data: { ok: true } }),
+        text: async () => JSON.stringify({ data: { ok: true } }),
+      };
+    };
+    return counter;
+  }
+
+  test("should send every OpenAPI POST even with identical params", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    try {
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      expect(counter.fetches).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should drop cached reads after a write so the next read is fresh", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    try {
+      await callOperation(["listPets"]);
+      await callOperation(["listPets"]);
+      expect(counter.fetches).toBe(1);
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      await callOperation(["listPets"]);
+      expect(counter.fetches).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should complete a write when the cache dir is unusable", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const blocker = join(CACHE_DIR, "not-a-dir");
+    writeFileSync(blocker, "");
+    setCacheDir(join(blocker, "cache"));
+    const counter = countFetches();
+    try {
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      expect(counter.fetches).toBe(1);
+    } finally {
+      setCacheDir(CACHE_DIR);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should not cache a read that overlapped a write", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    let fetches = 0;
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = async (_url, opts) => {
+      fetches += 1;
+      if (fetches === 1) await gate;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ method: opts.method }),
+        text: async () => JSON.stringify({ method: opts.method }),
+      };
+    };
+    try {
+      const slowRead = callOperation(["listPets"]);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      release();
+      await slowRead;
+      await callOperation(["listPets"]);
+      expect(fetches).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should send every GraphQL mutation and cache a repeated query", async () => {
+    currentSpec = mockGraphQL();
+    currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    try {
+      await callOperation(["createPost", "--var", "title=a"]);
+      await callOperation(["createPost", "--var", "title=a"]);
+      expect(counter.fetches).toBe(2);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await callOperation(["me"]);
+      await callOperation(["me"]);
+      expect(counter.fetches).toBe(3);
+      const mutation = "# bump\nfragment F on Post { id } mutation { createPost { ...F } }";
+      await callOperation(["me", "--data", mutation]);
+      await callOperation(["me", "--data", mutation]);
+      expect(counter.fetches).toBe(5);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should call an MCP tool every time unless it declares readOnlyHint", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: [
+        { name: "task_update", description: null, inputSchema: null },
+        { name: "task_get", description: null, inputSchema: null, readOnly: true },
+      ],
+    };
+    mcpCalls = 0;
+    await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
+    await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
+    expect(mcpCalls).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await callOperation(["task_get", "--data", '{"id":"t1"}']);
+    await callOperation(["task_get", "--data", '{"id":"t1"}']);
+    expect(mcpCalls).toBe(3);
   });
 });
 

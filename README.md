@@ -166,7 +166,7 @@ spec import ~/.cursor/mcp.json
 spec import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-Registration is instant — does not connect. Connection happens on first `list`/`show`/`call`. Spec/tool catalogs are cached 30 minutes; identical `call` results (same path + params) are cached 1 minute. Files live in `~/.spec-cli/cache/`.
+Registration is instant — does not connect. Connection happens on first `list`/`show`/`call`. Spec/tool catalogs are cached 30 minutes. Identical side-effect-free `call` results (same path + params) are cached 1 minute: OpenAPI `GET`/`HEAD`, GraphQL queries, and MCP tools that declare `readOnlyHint`. Writes always reach the server. Files live in `~/.spec-cli/cache/`.
 
 ### Or use inline (no registration)
 
