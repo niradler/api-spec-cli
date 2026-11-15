@@ -82,12 +82,14 @@ mock.module("../src/resolve.ts", () => ({
 }));
 
 let mcpCallTool;
+let mcpCalls = 0;
 const realMcpClient = { ...(await import("../src/mcp-client.ts")) };
 mock.module("../src/mcp-client.ts", () => ({
   ...realMcpClient,
   createMcpClient: async () => ({
     callTool: async (args) => {
       mcpCallTool = args;
+      mcpCalls += 1;
       return { content: [{ type: "text", text: "ok" }], isError: false };
     },
     close: async () => {},
@@ -372,6 +374,64 @@ describe("call - GraphQL policy", () => {
 
     await expect(callOperation(["me"])).rejects.toThrow("blocked by policy: me is locked");
     expect(lastFetchUrl).toBeUndefined();
+  });
+});
+
+describe("call - cache only side-effect-free calls", () => {
+  function countFetches() {
+    const counter = { fetches: 0 };
+    globalThis.fetch = async () => {
+      counter.fetches += 1;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ data: { ok: true } }),
+        text: async () => JSON.stringify({ data: { ok: true } }),
+      };
+    };
+    return counter;
+  }
+
+  test("should send every OpenAPI POST even with identical params", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+    await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+    expect(counter.fetches).toBe(2);
+    globalThis.fetch = originalFetch;
+  });
+
+  test("should send every GraphQL mutation and cache a repeated query", async () => {
+    currentSpec = mockGraphQL();
+    currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    await callOperation(["createPost", "--var", "title=a"]);
+    await callOperation(["createPost", "--var", "title=a"]);
+    expect(counter.fetches).toBe(2);
+    await callOperation(["me"]);
+    await callOperation(["me"]);
+    expect(counter.fetches).toBe(3);
+    globalThis.fetch = originalFetch;
+  });
+
+  test("should call an MCP tool every time unless it declares readOnlyHint", async () => {
+    currentSpec = {
+      type: "mcp",
+      tools: [
+        { name: "task_update", description: null, inputSchema: null },
+        { name: "task_get", description: null, inputSchema: null, readOnly: true },
+      ],
+    };
+    mcpCalls = 0;
+    await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
+    await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
+    expect(mcpCalls).toBe(2);
+    await callOperation(["task_get", "--data", '{"id":"t1"}']);
+    await callOperation(["task_get", "--data", '{"id":"t1"}']);
+    expect(mcpCalls).toBe(3);
   });
 });
 

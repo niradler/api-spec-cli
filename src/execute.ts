@@ -214,7 +214,8 @@ async function callMcp(
   enforcePolicy({ spec: ctx.specName, tool: tool.name, args: toolArgs });
 
   const keyParts = mcpKeyParts(mcp, ctx, "callTool", tool.name, toolArgs);
-  const hit = cached<McpCallResult>(keyParts, ctx, tool.name);
+  const readOnly = tool.readOnly === true;
+  const hit = readOnly ? cached<McpCallResult>(keyParts, ctx, tool.name) : null;
   if (hit) return hit;
 
   const result = (await withMcpClient(mcp, (client) =>
@@ -228,7 +229,7 @@ async function callMcp(
     content: result.content,
     result,
   };
-  return store(keyParts, ctx, tool.name, payload, !isError);
+  return store(keyParts, ctx, tool.name, payload, readOnly && !isError);
 }
 
 function callContext(entry: ResolvedEntry, request: CallRequest): CallContext {
@@ -338,7 +339,8 @@ async function callOpenApi(
     data: body || null,
     headers,
   };
-  const hit = cached<OpenApiCallResult>(keyParts, ctx, op.id);
+  const readOnly = method === "GET" || method === "HEAD";
+  const hit = readOnly ? cached<OpenApiCallResult>(keyParts, ctx, op.id) : null;
   if (hit) return hit;
 
   const res = await fetch(url, {
@@ -353,7 +355,7 @@ async function callOpenApi(
     headers: Object.fromEntries(res.headers.entries()),
     body: await readBody(res),
   };
-  return store(keyParts, ctx, op.id, payload, res.ok);
+  return store(keyParts, ctx, op.id, payload, readOnly && res.ok);
 }
 
 async function callGraphql(
@@ -396,7 +398,8 @@ async function callGraphql(
     data: { query, variables },
     headers,
   };
-  const hit = cached<GraphqlCallResult>(keyParts, ctx, op.name);
+  const readOnly = op.kind === "query" && !/^\s*(mutation|subscription)\b/.test(query);
+  const hit = readOnly ? cached<GraphqlCallResult>(keyParts, ctx, op.name) : null;
   if (hit) return hit;
 
   const res = await fetch(endpoint, {
@@ -413,5 +416,5 @@ async function callGraphql(
     data: responseBody?.data || null,
     errors: responseBody?.errors || null,
   };
-  return store(keyParts, ctx, op.name, payload, res.ok && !responseBody?.errors);
+  return store(keyParts, ctx, op.name, payload, readOnly && res.ok && !responseBody?.errors);
 }
