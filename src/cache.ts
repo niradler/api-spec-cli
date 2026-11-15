@@ -233,6 +233,28 @@ export function setCallCache(
   });
 }
 
+export function preciseNow(): number {
+  return performance.timeOrigin + performance.now();
+}
+
+function writeMarker(specName: string | null): string {
+  return join(getCacheDir(), `write-${safeKey(specName || "inline")}`);
+}
+
+export function markSpecWrite(specName: string | null): void {
+  mkdirSync(getCacheDir(), { recursive: true });
+  writeFileSync(writeMarker(specName), String(preciseNow()), { mode: 0o600 });
+  removeCallCachesForSpec(specName);
+}
+
+export function lastSpecWrite(specName: string | null): number {
+  try {
+    return Number(readFileSync(writeMarker(specName), "utf-8")) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function removeCallCachesForSpec(specName: string | null): void {
   const dir = getCacheDir();
   if (!existsSync(dir)) return;

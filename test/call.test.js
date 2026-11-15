@@ -423,6 +423,39 @@ describe("call - cache only side-effect-free calls", () => {
     }
   });
 
+  test("should not cache a read that overlapped a write", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    let fetches = 0;
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = async (_url, opts) => {
+      fetches += 1;
+      if (fetches === 1) await gate;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ method: opts.method }),
+        text: async () => JSON.stringify({ method: opts.method }),
+      };
+    };
+    try {
+      const slowRead = callOperation(["listPets"]);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      release();
+      await slowRead;
+      await callOperation(["listPets"]);
+      expect(fetches).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("should send every GraphQL mutation and cache a repeated query", async () => {
     currentSpec = mockGraphQL();
     currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };

@@ -4,7 +4,14 @@ import type {
   GetPromptResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { callCacheKey, getCallCache, removeCallCachesForSpec, setCallCache } from "./cache.ts";
+import {
+  callCacheKey,
+  getCallCache,
+  lastSpecWrite,
+  markSpecWrite,
+  preciseNow,
+  setCallCache,
+} from "./cache.ts";
 import { buildGraphqlQuery } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
 import {
@@ -82,6 +89,7 @@ interface CallContext {
   specName: string | undefined;
   request: CallRequest;
   data: string | undefined;
+  startedAt: number;
 }
 
 function httpTimeout(): number {
@@ -115,8 +123,10 @@ function store<T>(
   readOnly: boolean,
   ok: boolean
 ): T {
-  if (!readOnly) removeCallCachesForSpec(ctx.specName || null);
-  else if (ok) setCallCache(callCacheKey(keyParts), payload, { spec: ctx.specName || null });
+  const spec = ctx.specName || null;
+  if (!readOnly) markSpecWrite(spec);
+  else if (ok && lastSpecWrite(spec) < ctx.startedAt)
+    setCallCache(callCacheKey(keyParts), payload, { spec });
   recordUsage(ctx.specName, operation);
   return payload;
 }
@@ -235,7 +245,12 @@ async function callMcp(
 }
 
 function callContext(entry: ResolvedEntry, request: CallRequest): CallContext {
-  return { specName: registeredName(entry), request, data: serializeData(request.data) };
+  return {
+    specName: registeredName(entry),
+    request,
+    data: serializeData(request.data),
+    startedAt: preciseNow(),
+  };
 }
 
 export async function readResource(
