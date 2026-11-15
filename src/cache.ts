@@ -233,13 +233,13 @@ export function setCallCache(
   });
 }
 
-export function removeCallCachesForSpec(specName: string): void {
+export function removeCallCachesForSpec(specName: string | null): void {
   const dir = getCacheDir();
-  if (!specName || !existsSync(dir)) return;
+  if (!existsSync(dir)) return;
   for (const name of readdirSync(dir)) {
     if (!name.startsWith("call-") || !name.endsWith(".json")) continue;
     const file = join(dir, name);
-    if (readRecord(file)?.spec === specName) remove(file);
+    if ((readRecord(file)?.spec ?? null) === (specName || null)) remove(file);
   }
 }
 

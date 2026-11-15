@@ -4,7 +4,7 @@ import type {
   GetPromptResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { callCacheKey, getCallCache, setCallCache } from "./cache.ts";
+import { callCacheKey, getCallCache, removeCallCachesForSpec, setCallCache } from "./cache.ts";
 import { buildGraphqlQuery } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
 import {
@@ -112,9 +112,11 @@ function store<T>(
   ctx: CallContext,
   operation: string,
   payload: T,
-  cacheable: boolean
+  readOnly: boolean,
+  ok: boolean
 ): T {
-  if (cacheable) setCallCache(callCacheKey(keyParts), payload, { spec: ctx.specName || null });
+  if (!readOnly) removeCallCachesForSpec(ctx.specName || null);
+  else if (ok) setCallCache(callCacheKey(keyParts), payload, { spec: ctx.specName || null });
   recordUsage(ctx.specName, operation);
   return payload;
 }
@@ -229,7 +231,7 @@ async function callMcp(
     content: result.content,
     result,
   };
-  return store(keyParts, ctx, tool.name, payload, readOnly && !isError);
+  return store(keyParts, ctx, tool.name, payload, readOnly, !isError);
 }
 
 function callContext(entry: ResolvedEntry, request: CallRequest): CallContext {
@@ -256,7 +258,7 @@ export async function readResource(
   if (hit) return hit;
 
   const result = await withMcpClient(mcp, (client) => client.readResource({ uri }));
-  return store(keyParts, ctx, uri, { uri, contents: result.contents }, true);
+  return store(keyParts, ctx, uri, { uri, contents: result.contents }, true, true);
 }
 
 export async function getPrompt(
@@ -284,7 +286,7 @@ export async function getPrompt(
     description: result.description || null,
     messages: result.messages,
   };
-  return store(keyParts, ctx, prompt.name, payload, true);
+  return store(keyParts, ctx, prompt.name, payload, true, true);
 }
 
 async function readBody(res: Response): Promise<any> {
@@ -355,7 +357,7 @@ async function callOpenApi(
     headers: Object.fromEntries(res.headers.entries()),
     body: await readBody(res),
   };
-  return store(keyParts, ctx, op.id, payload, readOnly && res.ok);
+  return store(keyParts, ctx, op.id, payload, readOnly, res.ok);
 }
 
 async function callGraphql(
@@ -398,7 +400,7 @@ async function callGraphql(
     data: { query, variables },
     headers,
   };
-  const readOnly = op.kind === "query" && !/^\s*(mutation|subscription)\b/.test(query);
+  const readOnly = op.kind === "query" && !/\b(mutation|subscription)\b/.test(query);
   const hit = readOnly ? cached<GraphqlCallResult>(keyParts, ctx, op.name) : null;
   if (hit) return hit;
 
@@ -416,5 +418,5 @@ async function callGraphql(
     data: responseBody?.data || null,
     errors: responseBody?.errors || null,
   };
-  return store(keyParts, ctx, op.name, payload, readOnly && res.ok && !responseBody?.errors);
+  return store(keyParts, ctx, op.name, payload, readOnly, res.ok && !responseBody?.errors);
 }

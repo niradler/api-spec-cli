@@ -398,23 +398,49 @@ describe("call - cache only side-effect-free calls", () => {
     currentSpec = mockOpenAPISpec();
     currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
     const counter = countFetches();
-    await callOperation(["createPet", "--data", '{"name":"Rex"}']);
-    await callOperation(["createPet", "--data", '{"name":"Rex"}']);
-    expect(counter.fetches).toBe(2);
-    globalThis.fetch = originalFetch;
+    try {
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      expect(counter.fetches).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("should drop cached reads after a write so the next read is fresh", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const counter = countFetches();
+    try {
+      await callOperation(["listPets"]);
+      await callOperation(["listPets"]);
+      expect(counter.fetches).toBe(1);
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      await callOperation(["listPets"]);
+      expect(counter.fetches).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("should send every GraphQL mutation and cache a repeated query", async () => {
     currentSpec = mockGraphQL();
     currentConfig = { baseUrl: "https://gql.test.com", headers: {}, auth: null };
     const counter = countFetches();
-    await callOperation(["createPost", "--var", "title=a"]);
-    await callOperation(["createPost", "--var", "title=a"]);
-    expect(counter.fetches).toBe(2);
-    await callOperation(["me"]);
-    await callOperation(["me"]);
-    expect(counter.fetches).toBe(3);
-    globalThis.fetch = originalFetch;
+    try {
+      await callOperation(["createPost", "--var", "title=a"]);
+      await callOperation(["createPost", "--var", "title=a"]);
+      expect(counter.fetches).toBe(2);
+      await callOperation(["me"]);
+      await callOperation(["me"]);
+      expect(counter.fetches).toBe(3);
+      const mutation = "# bump\nfragment F on Post { id } mutation { createPost { ...F } }";
+      await callOperation(["me", "--data", mutation]);
+      await callOperation(["me", "--data", mutation]);
+      expect(counter.fetches).toBe(5);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("should call an MCP tool every time unless it declares readOnlyHint", async () => {
