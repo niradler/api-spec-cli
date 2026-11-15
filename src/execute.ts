@@ -4,14 +4,7 @@ import type {
   GetPromptResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import {
-  callCacheKey,
-  getCallCache,
-  lastSpecWrite,
-  markSpecWrite,
-  preciseNow,
-  setCallCache,
-} from "./cache.ts";
+import { callCacheKey, getCallCache, lastSpecWrite, markSpecWrite, setCallCache } from "./cache.ts";
 import { buildGraphqlQuery } from "./graphql.ts";
 import { createMcpClient } from "./mcp-client.ts";
 import {
@@ -249,7 +242,7 @@ function callContext(entry: ResolvedEntry, request: CallRequest): CallContext {
     specName: registeredName(entry),
     request,
     data: serializeData(request.data),
-    startedAt: preciseNow(),
+    startedAt: Date.now(),
   };
 }
 

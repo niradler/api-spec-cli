@@ -423,6 +423,22 @@ describe("call - cache only side-effect-free calls", () => {
     }
   });
 
+  test("should complete a write when the cache dir is unusable", async () => {
+    currentSpec = mockOpenAPISpec();
+    currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
+    const blocker = join(CACHE_DIR, "not-a-dir");
+    writeFileSync(blocker, "");
+    setCacheDir(join(blocker, "cache"));
+    const counter = countFetches();
+    try {
+      await callOperation(["createPet", "--data", '{"name":"Rex"}']);
+      expect(counter.fetches).toBe(1);
+    } finally {
+      setCacheDir(CACHE_DIR);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("should not cache a read that overlapped a write", async () => {
     currentSpec = mockOpenAPISpec();
     currentConfig = { baseUrl: "https://api.test.com", headers: {}, auth: null };
@@ -464,6 +480,7 @@ describe("call - cache only side-effect-free calls", () => {
       await callOperation(["createPost", "--var", "title=a"]);
       await callOperation(["createPost", "--var", "title=a"]);
       expect(counter.fetches).toBe(2);
+      await new Promise((resolve) => setTimeout(resolve, 2));
       await callOperation(["me"]);
       await callOperation(["me"]);
       expect(counter.fetches).toBe(3);
@@ -488,6 +505,7 @@ describe("call - cache only side-effect-free calls", () => {
     await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
     await callOperation(["task_update", "--data", '{"id":"t1","progress":50}']);
     expect(mcpCalls).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 2));
     await callOperation(["task_get", "--data", '{"id":"t1"}']);
     await callOperation(["task_get", "--data", '{"id":"t1"}']);
     expect(mcpCalls).toBe(3);

@@ -233,18 +233,17 @@ export function setCallCache(
   });
 }
 
-export function preciseNow(): number {
-  return performance.timeOrigin + performance.now();
-}
-
 function writeMarker(specName: string | null): string {
   return join(getCacheDir(), `write-${safeKey(specName || "inline")}`);
 }
 
 export function markSpecWrite(specName: string | null): void {
-  mkdirSync(getCacheDir(), { recursive: true });
-  writeFileSync(writeMarker(specName), String(preciseNow()), { mode: 0o600 });
-  removeCallCachesForSpec(specName);
+  if (!enabled()) return;
+  try {
+    mkdirSync(getCacheDir(), { recursive: true });
+    writeFileSync(writeMarker(specName), String(Date.now()), { mode: 0o600 });
+    removeCallCachesForSpec(specName);
+  } catch {}
 }
 
 export function lastSpecWrite(specName: string | null): number {
